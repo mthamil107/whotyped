@@ -1,0 +1,123 @@
+<!--
+  whotyped rules for Wazuh, ids 100500-100510.
+
+  Fields come from the whotyped.alert.v1 JSON schema: schema, ts, host, event, class, mode,
+  user, src_ip, key_fingerprint, agent, score, level, reasons[], session_id.
+  Two base rules cover the two ingestion paths: 100500 for the built-in json decoder
+  (<log_format>json</log_format> on alerts.jsonl) and 100510 for syslog-wrapped lines
+  decoded by local_decoder.xml. Every child rule accepts either parent.
+
+  Install: copy to /var/ossec/etc/rules/whotyped_rules.xml on the manager and restart wazuh-manager.
+  Status: written against the Wazuh 4.x rule syntax; UNTESTED on a live manager as of 2026-09-11.
+-->
+<group name="whotyped,ai_agent,">
+
+  <rule id="100500" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="schema">^whotyped\.alert\.v1$</field>
+    <description>whotyped: alert record (json file)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <rule id="100510" level="0">
+    <decoded_as>whotyped</decoded_as>
+    <field name="schema">^whotyped\.alert\.v1$</field>
+    <description>whotyped: alert record (syslog)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <rule id="100501" level="5">
+    <if_sid>100500,100510</if_sid>
+    <field name="event">^agent_declared$</field>
+    <description>whotyped: AI agent $(agent) declared itself on $(host) as $(user) from $(src_ip)</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>agent_declared,</group>
+  </rule>
+
+  <rule id="100502" level="5">
+    <if_sid>100500,100510</if_sid>
+    <field name="event">^agent_detected$</field>
+    <field name="level">^info$</field>
+    <description>whotyped: possible AI agent on $(host) as $(user) from $(src_ip), score $(score)</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>agent_suspected,</group>
+  </rule>
+
+  <rule id="100503" level="10">
+    <if_sid>100500,100510</if_sid>
+    <field name="event">^agent_detected$</field>
+    <field name="level">^alert$</field>
+    <description>whotyped: suspected AI agent on $(host) as $(user) from $(src_ip), score $(score) ($(mode))</description>
+    <mitre>
+      <id>T1078</id>
+      <id>T1021.004</id>
+    </mitre>
+    <group>agent_suspected,authentication_success,</group>
+  </rule>
+
+  <rule id="100504" level="12">
+    <if_sid>100500,100510</if_sid>
+    <field name="event">^agent_high$|^agent_detected$</field>
+    <field name="level">^high$</field>
+    <description>whotyped: AI agent with high confidence on $(host) as $(user) from $(src_ip), score $(score)</description>
+    <mitre>
+      <id>T1078</id>
+      <id>T1021.004</id>
+      <id>T1059.004</id>
+    </mitre>
+    <group>agent_suspected,</group>
+  </rule>
+
+  <rule id="100505" level="13">
+    <if_sid>100500,100510</if_sid>
+    <field name="event">^freeze_violation$</field>
+    <description>whotyped: AI agent activity during freeze window on $(host) as $(user) from $(src_ip)</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>freeze_violation,</group>
+  </rule>
+
+  <rule id="100506" level="7">
+    <if_sid>100500,100510</if_sid>
+    <field name="event">^agent_still_active$</field>
+    <description>whotyped: suspected AI agent still active on $(host) as $(user) from $(src_ip), score $(score)</description>
+    <group>agent_suspected,</group>
+  </rule>
+
+  <rule id="100507" level="3">
+    <if_sid>100500,100510</if_sid>
+    <field name="event">^agent_ended$</field>
+    <description>whotyped: AI agent session ended on $(host) for $(user) from $(src_ip)</description>
+    <group>agent_ended,</group>
+  </rule>
+
+  <!-- Composite: three or more suspected-agent alerts for the same user within an hour. -->
+  <rule id="100508" level="12" frequency="3" timeframe="3600">
+    <if_matched_sid>100503</if_matched_sid>
+    <same_field>user</same_field>
+    <description>whotyped: repeated suspected AI agent activity for $(user) (3+ alerts in 1h)</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>agent_suspected,multiple_alerts,</group>
+  </rule>
+
+  <!-- Composite: the same user classified as an agent on two different hosts within an hour. -->
+  <rule id="100509" level="12" frequency="2" timeframe="3600">
+    <if_matched_sid>100503</if_matched_sid>
+    <same_field>user</same_field>
+    <not_same_field>host</not_same_field>
+    <description>whotyped: suspected AI agent using $(user) across multiple hosts within 1h</description>
+    <mitre>
+      <id>T1078</id>
+      <id>T1021.004</id>
+    </mitre>
+    <group>agent_suspected,lateral_movement,</group>
+  </rule>
+
+</group>

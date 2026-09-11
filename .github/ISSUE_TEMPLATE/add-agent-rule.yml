@@ -1,0 +1,80 @@
+name: Add agent rule
+description: Propose a fingerprint for an AI agent or MCP SSH server that whotyped does not know yet
+title: "rules: add <agent name>"
+labels: ["rule-pack", "good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. A rule-pack entry is one YAML block in `rules/agents.yaml` plus evidence. You can open the PR directly if you prefer (see CONTRIBUTING.md, "Add your agent"). Every value needs a reference or an UNVERIFIED mark.
+  - type: input
+    id: name
+    attributes:
+      label: Agent name and vendor
+      placeholder: "Example Agent (Example Inc)"
+    validations:
+      required: true
+  - type: input
+    id: id
+    attributes:
+      label: Proposed rule id
+      description: lowercase-hyphen; reuse the Vercel detect-agent id if one exists
+      placeholder: example-agent
+    validations:
+      required: true
+  - type: textarea
+    id: process
+    attributes:
+      label: Process names and argv patterns
+      description: comm / basename(exe), and argv substrings for node/python launched CLIs. Cite where you saw them.
+      placeholder: |
+        example-agent (native binary), node .../@example/agent-cli/dist/cli.js
+        source: https://...
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment variables set in child processes
+      description: Only variables the agent exports to the shells it runs (not its own config inputs).
+      placeholder: |
+        EXAMPLE_AGENT=1 in every child shell
+        source: https://docs.example.com/agent/environment
+  - type: textarea
+    id: flags
+    attributes:
+      label: Permission-skip / auto-approve flags
+      placeholder: |
+        --auto-approve, --no-confirm
+        source: https://...
+  - type: textarea
+    id: network
+    attributes:
+      label: API hosts and SSH client banner (if any)
+      placeholder: |
+        api.example.com
+        SSH-2.0-exampleclient_1.2 (only if it has its own SSH implementation)
+  - type: dropdown
+    id: how
+    attributes:
+      label: How does it reach servers?
+      multiple: true
+      options:
+        - Runs on the server itself (local agent)
+        - Calls the system ssh from a laptop or CI
+        - Has its own SSH client library (MCP server or built-in)
+        - Other (explain below)
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample evidence
+      description: A redacted `proc.seen` / `audit.execve` line, a `ps -eo pid,comm,args` excerpt, or an `environ` dump with only the agent variables. Remove usernames, hostnames, IPs, tokens.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed secrets, usernames, hostnames and IPs from the samples
+          required: true
+        - label: Values without a reference are marked UNVERIFIED
+          required: true
+        - label: I would like to open the PR myself

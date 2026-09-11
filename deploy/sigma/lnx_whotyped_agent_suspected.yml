@@ -1,0 +1,37 @@
+title: Whotyped Suspected AI Agent Session
+id: b8a53394-ba39-42e7-8847-0ab6dfcb91ec
+status: experimental
+description: |
+  Matches whotyped alert lines (schema whotyped.alert.v1) shipped through syslog, when a
+  session has been classified as a suspected AI agent at level "alert" (score >= 70) or
+  "high" (score >= 90), or as a freeze-window violation. whotyped emits compact JSON with
+  no spaces after colons, which is what the keywords below assume. If you ingest
+  alerts.jsonl as structured JSON instead, filter on the fields directly:
+  event in (agent_detected, agent_high, freeze_violation) and level in (alert, high).
+references:
+  - https://github.com/whotyped/whotyped/blob/main/docs/design/ARCHITECTURE.md
+author: whotyped project
+date: 2026-09-11
+tags:
+  - attack.initial-access
+  - attack.t1078
+  - attack.execution
+  - attack.t1059.004
+logsource:
+  product: linux
+  service: syslog
+detection:
+  keywords_schema:
+    - '"schema":"whotyped.alert.v1"'
+  keywords_event:
+    - '"event":"agent_detected"'
+    - '"event":"agent_high"'
+    - '"event":"freeze_violation"'
+  keywords_level:
+    - '"level":"alert"'
+    - '"level":"high"'
+  condition: keywords_schema and keywords_event and keywords_level
+falsepositives:
+  - Automation that has not yet been given an allowlist profile in whotyped (Ansible, Terraform, VS Code Remote)
+  - Fast humans running scripted loops over ssh
+level: high

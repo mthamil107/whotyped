@@ -1,0 +1,122 @@
+# whotyped rules for Falco.
+#
+# STATUS: UNTESTED. Written against Falco 0.38+ field names (proc.env[NAME], proc.aname,
+# proc.cmdline) from the Falco field reference; not yet loaded on a live node as of
+# 2026-09-11. Run `falco -r whotyped_rules.yaml --validate` (or `falco -V`) before use and
+# open an issue with the output if it fails.
+#
+# What these rules add: host-side detection of AI agent processes independent of the
+# whotyped daemon. They do not do session scoring; for that read alerts.jsonl.
+# Adapted from the integration notes in docs/research/04-prior-art-and-integrations.md.
+
+- list: ai_agent_binaries
+  items: [claude, codex, gemini, aider, goose, cursor-agent, opencode, copilot, q, qchat, kiro-cli]
+
+- list: ai_agent_skip_flags
+  items:
+    - "--dangerously-skip-permissions"
+    - "bypassPermissions"
+    - "--yolo"
+    - "--approval-mode=yolo"
+    - "--full-auto"
+    - "--dangerously-bypass-approvals-and-sandbox"
+    - "danger-full-access"
+    - "--trust-all-tools"
+    - "--allow-all-tools"
+    - "--allow-all"
+
+- list: sshd_process_names
+  items: [sshd, sshd-session]
+
+# Local copy of the standard macro so this file loads without the default ruleset.
+- macro: wt_spawned_process
+  condition: (evt.type in (execve, execveat) and evt.dir=<)
+
+# Any ancestor is sshd: the process belongs to an SSH session.
+# proc.aname without an index matches any ancestor in Falco's process tree cache.
+- macro: wt_under_sshd
+  condition: (proc.aname in (sshd_process_names))
+
+# Environment variables that name an AI agent (declared or per-vendor).
+# proc.env is captured at exec time; an unset variable compares as an empty string.
+- macro: wt_ai_agent_env
+  condition: >
+    (proc.env[AI_AGENT] != "" or
+     proc.env[CLAUDECODE] != "" or
+     proc.env[CLAUDE_CODE] != "" or
+     proc.env[CODEX_SANDBOX] != "" or
+     proc.env[CODEX_THREAD_ID] != "" or
+     proc.env[GEMINI_CLI] != "" or
+     proc.env[CURSOR_AGENT] != "" or
+     proc.env[GOOSE_PROVIDER] != "" or
+     proc.env[OPENCODE] != "" or
+     proc.env[COPILOT_MODEL] != "" or
+     proc.env[Q_TERM] != "")
+
+- macro: wt_has_skip_flag
+  condition: >
+    (proc.cmdline contains "--dangerously-skip-permissions" or
+     proc.cmdline contains "bypassPermissions" or
+     proc.cmdline contains "--yolo" or
+     proc.cmdline contains "--approval-mode=yolo" or
+     proc.cmdline contains "--full-auto" or
+     proc.cmdline contains "--dangerously-bypass-approvals-and-sandbox" or
+     proc.cmdline contains "danger-full-access" or
+     proc.cmdline contains "--trust-all-tools" or
+     proc.cmdline contains "--allow-all-tools" or
+     proc.cmdline contains "--allow-all")
+
+- rule: AI agent binary started in SSH session
+  desc: >
+    A known AI coding agent CLI was executed inside an SSH session (an ancestor is sshd).
+    Expected on developer jump hosts, unexpected on production servers. Short names such as
+    "q" and "goose" can collide with unrelated software; check proc.exepath.
+  condition: wt_spawned_process and proc.name in (ai_agent_binaries) and wt_under_sshd
+  output: >
+    AI agent started under SSH (user=%user.name agent=%proc.name exe=%proc.exepath
+    cmdline=%proc.cmdline parent=%proc.pname tty=%proc.tty loginuid=%user.loginuid
+    ai_agent_env=%proc.env[AI_AGENT] container=%container.id)
+  priority: NOTICE
+  tags: [whotyped, ai_agent, ssh, mitre_execution, T1059.004]
+
+- rule: AI agent started with permission checks disabled
+  desc: >
+    A known AI coding agent CLI was executed with a flag that disables tool approval or the
+    sandbox. These argv shapes were used by the s1ngularity Nx supply-chain attack (2025-08-26).
+  condition: wt_spawned_process and proc.name in (ai_agent_binaries) and wt_has_skip_flag
+  output: >
+    AI agent with skip flag (user=%user.name agent=%proc.name cmdline=%proc.cmdline
+    parent=%proc.pname under_sshd=%proc.aname loginuid=%user.loginuid container=%container.id)
+  priority: WARNING
+  tags: [whotyped, ai_agent, mitre_execution, mitre_defense_evasion, T1059.004, T1562.001]
+
+- rule: Process carrying AI agent environment in SSH session
+  desc: >
+    A process in an SSH session has an environment variable that names an AI agent
+    (AI_AGENT declaration or a per-vendor marker such as CLAUDECODE=1). Fires for child
+    processes of agents, including shells spawned by an agent's Bash tool on this host.
+    Excludes the agent binaries themselves (covered by the rule above) to reduce volume.
+  condition: >
+    wt_spawned_process and wt_under_sshd and wt_ai_agent_env
+    and not proc.name in (ai_agent_binaries)
+  output: >
+    Process with AI agent env under SSH (user=%user.name proc=%proc.name cmdline=%proc.cmdline
+    parent=%proc.pname ai_agent=%proc.env[AI_AGENT] claudecode=%proc.env[CLAUDECODE]
+    loginuid=%user.loginuid container=%container.id)
+  priority: INFORMATIONAL
+  tags: [whotyped, ai_agent, ssh, T1078]
+
+- rule: Declared AI agent SSH session shell
+  desc: >
+    The login shell of an SSH session carries AI_AGENT, meaning the client declared itself
+    per the "AI_AGENT over SSH" convention and sshd has AcceptEnv AI_AGENT. Informational:
+    this is the cooperative, good case.
+  condition: >
+    wt_spawned_process and proc.pname in (sshd_process_names)
+    and proc.env[AI_AGENT] != ""
+  output: >
+    Declared AI agent session (user=%user.name agent=%proc.env[AI_AGENT]
+    session=%proc.env[AI_AGENT_SESSION] operator=%proc.env[AI_AGENT_OPERATOR]
+    shell=%proc.name tty=%proc.tty)
+  priority: INFORMATIONAL
+  tags: [whotyped, ai_agent, ssh, declared]

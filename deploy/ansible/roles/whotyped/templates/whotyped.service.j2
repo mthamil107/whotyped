@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# Used only by the binary install method; the deb/rpm ships its own unit (deploy/whotyped.service).
+[Unit]
+Description=whotyped - tells you when an AI agent is on this server over SSH
+Documentation=https://github.com/whotyped/whotyped
+After=network.target auditd.service sshd.service ssh.service
+
+[Service]
+Type=simple
+ExecStart={{ whotyped_binary_dest }} run --config {{ whotyped_config_path }}
+Restart=on-failure
+RestartSec=5s
+StateDirectory=whotyped
+ConfigurationDirectory=whotyped
+ProtectSystem=strict
+ReadWritePaths={{ whotyped_state_dir }}
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,88 @@
+#cloud-config
+# whotyped Phase 0 lab host: Rocky Linux 9 (OpenSSH 8.7, syslog identifier "sshd")
+# or Rocky Linux 10 (OpenSSH 9.9, "sshd-session"). Replace the REPLACE_ME keys first.
+hostname: lab-rocky
+manage_etc_hosts: true
+package_update: true
+package_upgrade: false
+
+packages:
+  - openssh-server
+  - audit
+  - rsyslog
+  - python3
+  - jq
+  - tmux
+  - curl
+  - policycoreutils-python-utils
+
+users:
+  - name: alice
+    gecos: Lab human 1 / agent operator
+    shell: /bin/bash
+    groups: [wheel]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "ssh-ed25519 REPLACE_ME_ALICE_PUBLIC_KEY alice@lab"
+  - name: bob
+    gecos: Lab human 2
+    shell: /bin/bash
+    groups: [wheel]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "ssh-ed25519 REPLACE_ME_BOB_PUBLIC_KEY bob@lab"
+  - name: deploy
+    gecos: Shared service account
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "ssh-ed25519 REPLACE_ME_DEPLOY_PUBLIC_KEY deploy@lab"
+      - 'environment="AI_AGENT=lab-agent",environment="AI_AGENT_OPERATOR=alice" ssh-ed25519 REPLACE_ME_DEPLOY_AGENT_PUBLIC_KEY deploy-agent@lab'
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/50-whotyped.conf
+    permissions: "0600"
+    content: |
+      LogLevel VERBOSE
+      # LogLevel DEBUG1
+      AcceptEnv AI_AGENT AI_AGENT_*
+      PermitUserEnvironment AI_AGENT,AI_AGENT_*
+
+  - path: /etc/audit/rules.d/90-whotyped.rules
+    permissions: "0640"
+    content: |
+      # Lab tuning (not in deploy/audit.rules): bigger backlog, never stall on overflow.
+      -b 8192
+      -f 1
+      --backlog_wait_time 0
+      # Same two rules as deploy/audit.rules; keep in sync.
+      -a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=unset -k whotyped
+      -a always,exit -F arch=b32 -S execve -F auid>=1000 -F auid!=unset -k whotyped
+
+  - path: /etc/profile.d/ai-agent-prompt.sh
+    permissions: "0644"
+    content: |
+      if [ -n "$AI_AGENT" ]; then
+        PS1="(agent:$AI_AGENT) $PS1"
+        logger -t ai_agent "user=$USER agent=$AI_AGENT session=${AI_AGENT_SESSION:-} operator=${AI_AGENT_OPERATOR:-}"
+      fi
+
+  - path: /etc/sudoers.d/ai-agent-envkeep
+    permissions: "0440"
+    content: |
+      Defaults env_keep += "AI_AGENT AI_AGENT_SESSION AI_AGENT_OPERATOR"
+
+runcmd:
+  # Rocky 9+ already has "Include /etc/ssh/sshd_config.d/*.conf" at the top of sshd_config.
+  - [sh, -c, "grep -q '^Include /etc/ssh/sshd_config.d/\\*.conf' /etc/ssh/sshd_config || sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config"]
+  - [sshd, -t]
+  - [systemctl, restart, sshd]
+  - [augenrules, --load]
+  - [systemctl, enable, --now, auditd]
+  - [systemctl, enable, --now, rsyslog]
+  # audit.log is 0600 root; whotyped runs as root so no change is needed. rsyslog writes /var/log/secure by default.
+  - [sh, -c, "mkdir -p /opt/whotyped-lab && echo 'lab ready' > /opt/whotyped-lab/READY"]
+
+final_message: "whotyped lab host (Rocky) ready after $UPTIME seconds. sshd logs go to /var/log/secure and journald."

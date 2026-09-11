@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "whotyped.fullname" . }}
+  labels:
+    {{- include "whotyped.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "whotyped.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        {{- include "whotyped.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "whotyped.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      # hostPID: the node's processes are visible in /proc so the procfs reader can attribute
+      # SSH session shells. hostNetwork stays false: whotyped reads /proc/net/tcp of the host
+      # through the hostPath mount, it does not need the host network namespace.
+      hostPID: true
+      hostNetwork: false
+      dnsPolicy: ClusterFirst
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: whotyped
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - run
+            - --config
+            - /etc/whotyped/config.yaml
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.config.sinks.prometheus.enabled }}
+          ports:
+            - name: metrics
+              containerPort: {{ (splitList ":" .Values.config.sinks.prometheus.listen) | last | int }}
+              protocol: TCP
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/whotyped
+              readOnly: true
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: host-var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: host-audit
+              mountPath: /var/log/audit
+              readOnly: true
+            - name: host-journal
+              mountPath: /run/systemd/journal
+              readOnly: true
+            - name: host-machine-id
+              mountPath: /etc/machine-id
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/whotyped
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "whotyped.fullname" . }}
+        - name: host-proc
+          hostPath:
+            path: {{ .Values.hostPaths.proc }}
+            type: Directory
+        - name: host-var-log
+          hostPath:
+            path: {{ .Values.hostPaths.varLog }}
+            type: Directory
+        - name: host-audit
+          hostPath:
+            path: {{ .Values.hostPaths.auditLog }}
+            type: DirectoryOrCreate
+        - name: host-journal
+          hostPath:
+            path: {{ .Values.hostPaths.journal }}
+            type: DirectoryOrCreate
+        - name: host-machine-id
+          hostPath:
+            path: /etc/machine-id
+            type: File
+        - name: state
+          hostPath:
+            path: {{ .Values.hostPaths.state }}
+            type: DirectoryOrCreate

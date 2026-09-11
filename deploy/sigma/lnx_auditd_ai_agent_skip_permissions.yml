@@ -1,0 +1,124 @@
+title: AI Coding Agent Started With Permission Checks Disabled
+id: 100d57da-fa80-4028-af93-5890b8d3b57c
+status: experimental
+description: |
+  Detects AI coding agent CLIs (Claude Code, Gemini CLI, Codex CLI, GitHub Copilot CLI,
+  Amazon Q Developer CLI, Kiro CLI, Cursor CLI) started with a flag that disables tool
+  approval or sandboxing. These exact argv shapes were used by the s1ngularity supply-chain
+  attack against Nx (2025-08-26) to harvest secrets, and they are how unattended agents are
+  usually launched on servers. Requires an auditd execve rule such as
+  "-a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=unset -k whotyped".
+references:
+  - https://code.claude.com/docs/en/permission-modes
+  - https://google-gemini.github.io/gemini-cli/docs/tools/shell.html
+  - https://kiro.dev/docs/cli/headless/
+  - https://cursor.com/docs/cli/reference/parameters
+  - https://github.com/whotyped/whotyped/blob/main/docs/research/02-agent-fingerprints.md
+author: whotyped project
+date: 2026-09-11
+tags:
+  - attack.execution
+  - attack.t1059.004
+  - attack.defense-evasion
+  - attack.t1562.001
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection_execve:
+    type: 'EXECVE'
+  selection_agent_exact:
+    a0:
+      - 'claude'
+      - 'gemini'
+      - 'codex'
+      - 'copilot'
+      - 'q'
+      - 'qchat'
+      - 'kiro-cli'
+      - 'cursor-agent'
+  selection_agent_path:
+    a0|endswith:
+      - '/claude'
+      - '/gemini'
+      - '/codex'
+      - '/copilot'
+      - '/bin/q'
+      - '/qchat'
+      - '/kiro-cli'
+      - '/cursor-agent'
+  selection_agent_node:
+    a0|endswith: 'node'
+    a1|contains:
+      - '@anthropic-ai/claude-code/'
+      - '@google/gemini-cli/'
+      - '@github/copilot/'
+  selection_flag:
+    - a1:
+        - '--dangerously-skip-permissions'
+        - 'bypassPermissions'
+        - '--yolo'
+        - '--approval-mode=yolo'
+        - '--full-auto'
+        - '--dangerously-bypass-approvals-and-sandbox'
+        - 'danger-full-access'
+        - '--trust-all-tools'
+        - '--allow-all-tools'
+        - '--allow-all'
+    - a2:
+        - '--dangerously-skip-permissions'
+        - 'bypassPermissions'
+        - '--yolo'
+        - '--approval-mode=yolo'
+        - '--full-auto'
+        - '--dangerously-bypass-approvals-and-sandbox'
+        - 'danger-full-access'
+        - '--trust-all-tools'
+        - '--allow-all-tools'
+        - '--allow-all'
+    - a3:
+        - '--dangerously-skip-permissions'
+        - 'bypassPermissions'
+        - '--yolo'
+        - '--approval-mode=yolo'
+        - '--full-auto'
+        - '--dangerously-bypass-approvals-and-sandbox'
+        - 'danger-full-access'
+        - '--trust-all-tools'
+        - '--allow-all-tools'
+        - '--allow-all'
+    - a4:
+        - '--dangerously-skip-permissions'
+        - 'bypassPermissions'
+        - '--yolo'
+        - '--approval-mode=yolo'
+        - '--full-auto'
+        - '--dangerously-bypass-approvals-and-sandbox'
+        - 'danger-full-access'
+        - '--trust-all-tools'
+        - '--allow-all-tools'
+        - '--allow-all'
+    - a5:
+        - '--dangerously-skip-permissions'
+        - 'bypassPermissions'
+        - '--yolo'
+        - '--approval-mode=yolo'
+        - '--full-auto'
+        - '--dangerously-bypass-approvals-and-sandbox'
+        - 'danger-full-access'
+        - '--trust-all-tools'
+        - '--allow-all-tools'
+        - '--allow-all'
+  condition: selection_execve and 1 of selection_agent_* and selection_flag
+fields:
+  - a0
+  - a1
+  - a2
+  - a3
+  - auid
+  - ses
+  - tty
+falsepositives:
+  - Developers deliberately running agents unattended in sandboxes or CI (allowlist by auid or host)
+  - Flags beyond argument position a5 are not matched; extend the selection if your agents use long command lines
+level: high

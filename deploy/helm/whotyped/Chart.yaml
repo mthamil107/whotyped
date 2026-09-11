@@ -1,0 +1,16 @@
+apiVersion: v2
+name: whotyped
+description: Node-level DaemonSet that detects AI agents acting over SSH on Kubernetes nodes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/whotyped/whotyped
+sources:
+  - https://github.com/whotyped/whotyped
+keywords:
+  - security
+  - ssh
+  - audit
+  - ai-agents
+maintainers:
+  - name: whotyped project

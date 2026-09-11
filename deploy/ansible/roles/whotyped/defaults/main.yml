@@ -1,0 +1,45 @@
+---
+# Release
+whotyped_version: "0.1.0"
+whotyped_release_base_url: "https://github.com/whotyped/whotyped/releases/download"
+
+# package | binary
+whotyped_install_method: package
+# Used by the binary method: path on the Ansible controller.
+whotyped_binary_src: "files/whotyped"
+whotyped_binary_dest: "/usr/local/bin/whotyped"
+
+# Architecture mapping for release assets
+whotyped_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+whotyped_arch: "{{ whotyped_arch_map[ansible_architecture] | default('amd64') }}"
+
+# sshd
+whotyped_manage_sshd: true
+whotyped_sshd_loglevel: VERBOSE          # VERBOSE | DEBUG1
+whotyped_sshd_dropin: /etc/ssh/sshd_config.d/50-whotyped.conf
+whotyped_sshd_service: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+
+# auditd
+whotyped_manage_auditd: true
+whotyped_auditd_package: "{{ 'auditd' if ansible_os_family == 'Debian' else 'audit' }}"
+whotyped_audit_rules_path: /etc/audit/rules.d/90-whotyped.rules   # same path `whotyped check --fix` uses
+
+# Paths
+whotyped_config_dir: /etc/whotyped
+whotyped_config_path: /etc/whotyped/config.yaml
+whotyped_state_dir: /var/lib/whotyped
+whotyped_config_template: config.yaml.j2
+
+# Config values rendered into config.yaml
+whotyped_privacy_command_text: redacted  # redacted | full | none
+whotyped_privacy_hash_usernames: false
+whotyped_alerts_path: /var/lib/whotyped/alerts.jsonl
+whotyped_webhook_url: ""
+whotyped_webhook_format: json            # json | slack | teams | discord
+whotyped_syslog_enabled: false
+whotyped_prometheus_listen: ""           # e.g. "127.0.0.1:9477" to enable
+whotyped_freeze_windows: []              # [{name: "release-freeze", start: "2026-12-20T00:00:00Z", end: "2027-01-03T00:00:00Z", level: high}]
+whotyped_allowlist_profiles: []          # names from rules/allowlist.yaml, e.g. [ansible, vscode-remote]
+whotyped_config_extra: {}                # merged at top level of the config (keys must exist in deploy/config.example.yaml)

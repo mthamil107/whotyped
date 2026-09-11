@@ -1,0 +1,20 @@
+<!--
+  whotyped decoder for Wazuh.
+
+  Only needed when whotyped alerts arrive wrapped in syslog, e.g.
+    Sep 11 14:03:22 web-03 whotyped[1234]: {"schema":"whotyped.alert.v1","ts":"...","event":"agent_detected",...}
+  When the Wazuh agent reads /var/lib/whotyped/alerts.jsonl with <log_format>json</log_format>
+  the built-in json decoder handles it and this file is not required.
+
+  Install: copy to /var/ossec/etc/decoders/whotyped_decoder.xml on the manager and restart wazuh-manager.
+  Status: written against the Wazuh 4.x decoder syntax; UNTESTED on a live manager as of 2026-09-11.
+-->
+<decoder name="whotyped">
+  <program_name>^whotyped$</program_name>
+</decoder>
+
+<decoder name="whotyped-json">
+  <parent>whotyped</parent>
+  <prematch>^{</prematch>
+  <plugin_decoder>JSON_Decoder</plugin_decoder>
+</decoder>

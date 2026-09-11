@@ -1,0 +1,17 @@
+---
+# Example playbook. Copy, edit, run with:
+#   ansible-playbook -i inventory deploy/ansible/playbook.yml --check --diff
+- name: Install and configure whotyped
+  hosts: linux_servers
+  become: true
+  roles:
+    - role: whotyped
+      vars:
+        whotyped_version: "0.1.0"
+        whotyped_install_method: package
+        whotyped_sshd_loglevel: VERBOSE
+        whotyped_manage_auditd: true
+        whotyped_privacy_command_text: redacted
+        whotyped_webhook_url: ""
+        whotyped_freeze_windows: []
+        whotyped_allowlist_profiles: []

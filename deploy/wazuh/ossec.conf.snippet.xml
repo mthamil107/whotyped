@@ -1,0 +1,19 @@
+<!--
+  Add to /var/ossec/etc/ossec.conf on every host running whotyped (inside <ossec_config>).
+  The Wazuh agent tails the JSON file; the manager's built-in json decoder flattens the fields
+  and local_rules.xml (100500-100510) classifies them.
+-->
+<ossec_config>
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/lib/whotyped/alerts.jsonl</location>
+    <label key="source">whotyped</label>
+  </localfile>
+</ossec_config>
+
+<!--
+  Alternative when whotyped writes to syslog (sinks.syslog enabled, tag "whotyped") and the
+  syslog file is already collected: nothing to add here; install local_decoder.xml on the manager.
+  The file is created by whotyped with mode 0640 root:whotyped; add the "wazuh" user to the
+  whotyped group or adjust the mode so the agent can read it.
+-->

@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: whotyped
+  author: whotyped project
+  description: Install and configure the whotyped daemon (AI agent detection over SSH)
+  license: Apache-2.0
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm, trixie]
+    - name: EL
+      versions: ["9", "10"]
+  galaxy_tags: [security, ssh, audit, monitoring]
+dependencies: []

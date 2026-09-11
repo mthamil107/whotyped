@@ -1,0 +1,101 @@
+#cloud-config
+# whotyped Phase 0 lab host: Ubuntu 24.04 (also works on 22.04).
+# Replace the REPLACE_ME keys before launching.
+#   multipass launch 24.04 --name lab-ubuntu --cloud-init lab/cloud-init-ubuntu.yaml
+hostname: lab-ubuntu
+manage_etc_hosts: true
+package_update: true
+package_upgrade: false
+
+packages:
+  - openssh-server
+  - auditd
+  - audispd-plugins
+  - rsyslog
+  - python3
+  - jq
+  - tmux
+  - curl
+
+users:
+  - name: alice
+    gecos: Lab human 1 / agent operator
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "ssh-ed25519 REPLACE_ME_ALICE_PUBLIC_KEY alice@lab"
+  - name: bob
+    gecos: Lab human 2
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "ssh-ed25519 REPLACE_ME_BOB_PUBLIC_KEY bob@lab"
+  - name: deploy
+    gecos: Shared service account
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "ssh-ed25519 REPLACE_ME_DEPLOY_PUBLIC_KEY deploy@lab"
+      # Second key for an agent with a server-imposed declaration (spec section 2.3).
+      # Requires PermitUserEnvironment below.
+      - 'environment="AI_AGENT=lab-agent",environment="AI_AGENT_OPERATOR=alice" ssh-ed25519 REPLACE_ME_DEPLOY_AGENT_PUBLIC_KEY deploy-agent@lab'
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/50-whotyped.conf
+    permissions: "0644"
+    content: |
+      # whotyped lab: VERBOSE gives "Starting session:" lines; DEBUG1 adds the client banner.
+      LogLevel VERBOSE
+      # Uncomment for banner recordings (higher log volume):
+      # LogLevel DEBUG1
+      AcceptEnv AI_AGENT AI_AGENT_*
+      # Allow authorized_keys environment= for the declared-agent key on the deploy account.
+      PermitUserEnvironment AI_AGENT,AI_AGENT_*
+
+  - path: /etc/audit/rules.d/90-whotyped.rules
+    permissions: "0640"
+    content: |
+      # Lab tuning (not in deploy/audit.rules): bigger backlog, never stall on overflow.
+      -b 8192
+      -f 1
+      --backlog_wait_time 0
+      # Same two rules as deploy/audit.rules; keep in sync.
+      -a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=unset -k whotyped
+      -a always,exit -F arch=b32 -S execve -F auid>=1000 -F auid!=unset -k whotyped
+
+  - path: /etc/profile.d/ai-agent-prompt.sh
+    permissions: "0644"
+    content: |
+      # Show a declared agent in the prompt and log it once per login shell.
+      if [ -n "$AI_AGENT" ]; then
+        PS1="(agent:$AI_AGENT) $PS1"
+        logger -t ai_agent "user=$USER agent=$AI_AGENT session=${AI_AGENT_SESSION:-} operator=${AI_AGENT_OPERATOR:-}"
+      fi
+
+  - path: /etc/sudoers.d/ai-agent-envkeep
+    permissions: "0440"
+    content: |
+      Defaults env_keep += "AI_AGENT AI_AGENT_SESSION AI_AGENT_OPERATOR"
+
+  - path: /etc/rsyslog.d/49-whotyped-lab.conf
+    permissions: "0644"
+    content: |
+      # Keep a plain auth.log as well as journald, so both reader paths can be tested.
+      auth,authpriv.*   /var/log/auth.log
+
+runcmd:
+  - [sh, -c, "grep -q '^Include /etc/ssh/sshd_config.d/\\*.conf' /etc/ssh/sshd_config || sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config"]
+  - [sshd, -t]
+  - [systemctl, restart, ssh]
+  - [augenrules, --load]
+  - [systemctl, enable, --now, auditd]
+  - [systemctl, enable, --now, rsyslog]
+  - [systemctl, restart, rsyslog]
+  - [sh, -c, "mkdir -p /opt/whotyped-lab && chmod 0755 /opt/whotyped-lab"]
+  - [sh, -c, "echo 'lab ready' > /opt/whotyped-lab/READY"]
+
+final_message: "whotyped lab host ready after $UPTIME seconds. Install whotyped next (docs/install/quickstart.md)."

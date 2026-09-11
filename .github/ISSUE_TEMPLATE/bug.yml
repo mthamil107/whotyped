@@ -1,0 +1,68 @@
+name: Bug report
+description: whotyped crashed, misparsed a log, lost events or behaved unexpectedly
+title: "bug: <short summary>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security problems use the Security tab (private reporting), not this form. For detection misses or noise use the false-positive template or open a discussion.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. whotyped run --config ...
+        2. ssh ...
+        3. see journalctl -u whotyped
+  - type: input
+    id: version
+    attributes:
+      label: whotyped version
+      placeholder: "output of `whotyped version`"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Distro, kernel, OpenSSH version
+      placeholder: "Rocky 9.4, 5.14.0, OpenSSH_8.7p1"
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `whotyped check --json`
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: journalctl -u whotyped, and the sshd or audit lines involved. Redact usernames, hostnames, IPs, fingerprints.
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: Config (redacted)
+      description: Remove webhook URLs and credentials.
+      render: yaml
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed secrets and personal data from the pastes
+          required: true
+        - label: I searched existing issues

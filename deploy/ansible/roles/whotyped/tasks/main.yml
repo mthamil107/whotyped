@@ -1,0 +1,123 @@
+---
+- name: Install whotyped package (Debian family)
+  ansible.builtin.apt:
+    deb: "{{ whotyped_release_base_url }}/v{{ whotyped_version }}/whotyped_{{ whotyped_version }}_linux_{{ whotyped_arch }}.deb"
+  when:
+    - whotyped_install_method == 'package'
+    - ansible_os_family == 'Debian'
+  notify: restart whotyped
+
+- name: Install whotyped package (RHEL family)
+  ansible.builtin.dnf:
+    name: "{{ whotyped_release_base_url }}/v{{ whotyped_version }}/whotyped_{{ whotyped_version }}_linux_{{ whotyped_arch }}.rpm"
+    state: present
+    disable_gpg_check: true
+  when:
+    - whotyped_install_method == 'package'
+    - ansible_os_family == 'RedHat'
+  notify: restart whotyped
+
+- name: Copy whotyped binary
+  ansible.builtin.copy:
+    src: "{{ whotyped_binary_src }}"
+    dest: "{{ whotyped_binary_dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: whotyped_install_method == 'binary'
+  notify: restart whotyped
+
+- name: Install systemd unit (binary method)
+  ansible.builtin.template:
+    src: whotyped.service.j2
+    dest: /etc/systemd/system/whotyped.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: whotyped_install_method == 'binary'
+  notify:
+    - reload systemd
+    - restart whotyped
+
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  loop:
+    - "{{ whotyped_config_dir }}"
+    - "{{ whotyped_state_dir }}"
+
+- name: Render config
+  ansible.builtin.template:
+    src: "{{ whotyped_config_template }}"
+    dest: "{{ whotyped_config_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  notify: restart whotyped
+
+- name: Ensure sshd_config includes sshd_config.d
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*Include\s+/etc/ssh/sshd_config\.d/\*\.conf'
+    line: "Include /etc/ssh/sshd_config.d/*.conf"
+    insertbefore: BOF
+    validate: "sshd -t -f %s"
+  when: whotyped_manage_sshd
+
+- name: Write sshd drop-in
+  ansible.builtin.template:
+    src: 50-whotyped.conf.j2
+    dest: "{{ whotyped_sshd_dropin }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: whotyped_manage_sshd
+  notify: reload sshd
+
+- name: Install auditd
+  ansible.builtin.package:
+    name: "{{ whotyped_auditd_package }}"
+    state: present
+  when: whotyped_manage_auditd
+
+- name: Write audit rules
+  ansible.builtin.template:
+    src: whotyped.rules.j2
+    dest: "{{ whotyped_audit_rules_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  when: whotyped_manage_auditd
+  notify: load audit rules
+
+- name: Enable auditd
+  ansible.builtin.service:
+    name: auditd
+    state: started
+    enabled: true
+  when: whotyped_manage_auditd
+
+- name: Flush handlers before starting whotyped
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start whotyped
+  ansible.builtin.systemd:
+    name: whotyped
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Report coverage
+  ansible.builtin.command: whotyped check --json
+  register: whotyped_check
+  changed_when: false
+  failed_when: whotyped_check.rc not in [0, 1]
+
+- name: Show coverage
+  ansible.builtin.debug:
+    msg: "{{ whotyped_check.stdout | from_json }}"
+  when: whotyped_check.stdout is defined and whotyped_check.stdout | length > 0

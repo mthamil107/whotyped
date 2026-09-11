@@ -1,0 +1,61 @@
+name: False positive
+description: whotyped flagged a session that was a human or known automation
+title: "false positive: <tool or situation>"
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sorry about the noise. Paste the alert; the `reasons` block is what we need. Redact `user`, `src_ip`, `key_fingerprint` and `host` if you must, but keep `reasons`, `suppressed`, `score`, `mode` and `window` intact. We aim to respond within 14 days.
+  - type: textarea
+    id: alert
+    attributes:
+      label: Alert line(s) from alerts.jsonl
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: truth
+    attributes:
+      label: What the session actually was
+      placeholder: "Ansible playbook run from our CI runner (OpenSSH connection, pipelining on), about 40 tasks."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: whotyped version
+      placeholder: "output of `whotyped version`"
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `whotyped check`
+      description: Tells us which readers were active (VERBOSE, auditd, DEBUG1).
+      render: text
+  - type: input
+    id: platform
+    attributes:
+      label: Distro and OpenSSH version
+      placeholder: "Ubuntu 24.04, OpenSSH_9.6p1"
+  - type: textarea
+    id: profile
+    attributes:
+      label: Allowlist profiles in your config that should have matched (if any)
+      render: yaml
+  - type: dropdown
+    id: impact
+    attributes:
+      label: How often
+      options:
+        - Once
+        - Daily
+        - Every run of this tool
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed secrets and anything that identifies a person from the paste
+          required: true

@@ -1,0 +1,4 @@
+## {{ ansible_managed }}
+## whotyped: log every execve by a logged-in user. Mirrors deploy/audit.rules; keep in sync.
+-a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=unset -k whotyped
+-a always,exit -F arch=b32 -S execve -F auid>=1000 -F auid!=unset -k whotyped

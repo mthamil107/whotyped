@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# whotyped needs VERBOSE for "Starting session:" lines (exec channel rhythm, PTY clue).
+# DEBUG1 additionally logs the client software banner at a much higher log volume.
+LogLevel {{ whotyped_sshd_loglevel }}
+# Let cooperative agents declare themselves (docs/spec/ai-agent-over-ssh.md).
+AcceptEnv AI_AGENT AI_AGENT_*

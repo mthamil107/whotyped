@@ -1,0 +1,29 @@
+# {{ ansible_managed }}
+# Minimal whotyped config rendered by the Ansible role. whotyped rejects unknown keys,
+# so only keys from deploy/config.example.yaml appear here; use whotyped_config_extra
+# for anything else.
+{% set webhook = {"enabled": false} %}
+{% if whotyped_webhook_url | length > 0 %}
+{%   set webhook = {"enabled": true, "url": whotyped_webhook_url, "format": whotyped_webhook_format, "min_level": "alert"} %}
+{% endif %}
+{% set prometheus = {"enabled": false} %}
+{% if whotyped_prometheus_listen | length > 0 %}
+{%   set prometheus = {"enabled": true, "listen": whotyped_prometheus_listen} %}
+{% endif %}
+{% set cfg = {
+  "privacy": {
+    "command_text": whotyped_privacy_command_text,
+    "hash_usernames": whotyped_privacy_hash_usernames
+  },
+  "freeze_windows": whotyped_freeze_windows,
+  "allowlist": {
+    "profiles_enabled": whotyped_allowlist_profiles
+  },
+  "sinks": {
+    "jsonfile": {"enabled": true, "path": whotyped_alerts_path},
+    "syslog": {"enabled": whotyped_syslog_enabled},
+    "webhook": webhook,
+    "prometheus": prometheus
+  }
+} %}
+{{ cfg | combine(whotyped_config_extra, recursive=True) | to_nice_yaml(indent=2) }}

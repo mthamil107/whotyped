@@ -1,0 +1,40 @@
+title: SSH Login From An Uncommon Client Implementation
+id: f9eca567-c8ba-462f-bf4c-99aad271abad
+status: experimental
+description: |
+  Detects sshd logging a client software banner that is not one of the common interactive
+  clients. Library clients (paramiko, AsyncSSH, ssh2js, Go, russh, libssh2) are what MCP SSH
+  servers and other agent tooling use. sshd only logs this line at LogLevel DEBUG1
+  ("Remote protocol version 2.0, remote software version paramiko_3.4.0"; older releases:
+  "Client protocol version 2.0; client software version ..."), so this rule is silent on hosts
+  running the default INFO or VERBOSE level. Library banners are shared with Ansible,
+  Terraform, Teleport and monitoring tools; treat a hit as automation and require a second
+  signal before calling it an agent.
+references:
+  - https://github.com/whotyped/whotyped/blob/main/docs/research/02-agent-fingerprints.md
+  - https://github.com/whotyped/whotyped/blob/main/docs/install/sshd-and-auditd.md
+author: whotyped project
+date: 2026-09-11
+tags:
+  - attack.initial-access
+  - attack.t1078
+  - attack.lateral-movement
+  - attack.t1021.004
+logsource:
+  product: linux
+  service: sshd
+detection:
+  keywords_banner:
+    - 'remote software version '
+    - 'client software version '
+  keywords_common_clients:
+    - 'software version OpenSSH_'
+    - 'software version PuTTY'
+    - 'software version WinSCP'
+    - 'software version Termius'
+    - 'software version MobaXterm'
+  condition: keywords_banner and not keywords_common_clients
+falsepositives:
+  - Configuration management (Ansible via paramiko or OpenSSH, Terraform via Go), Teleport, Rundeck, backup tools, vulnerability scanners
+  - Mobile and niche SSH clients (add them to the filter list)
+level: low

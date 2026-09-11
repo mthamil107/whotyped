@@ -1,0 +1,59 @@
+title: AI Coding Agent Binary Executed Without A Terminal
+id: ce9de856-0087-4830-a520-3cb1376a82dd
+status: experimental
+description: |
+  Detects execution of a known AI coding agent binary by a logged-in user (auid set by
+  pam_loginuid, which for most hosts means an SSH session) without a controlling terminal
+  (tty=(none)). Interactive humans running an agent get a pts; headless runs such as
+  "claude -p", "codex exec", "gemini -p" and MCP-launched agents do not.
+  Limits: auditd cannot tell an SSH session from a cron job or a systemd user service with
+  a loginuid set, and this rule cannot join the sshd login line to the execve record. Use
+  it as a triage signal and confirm the session via "ses" and the sshd log, or let whotyped
+  do the join. comm is truncated to 15 characters by the kernel.
+references:
+  - https://github.com/whotyped/whotyped/blob/main/docs/research/02-agent-fingerprints.md
+  - https://github.com/whotyped/whotyped/blob/main/docs/research/03-ssh-auditd-proc.md
+author: whotyped project
+date: 2026-09-11
+tags:
+  - attack.execution
+  - attack.t1059.004
+  - attack.lateral-movement
+  - attack.t1021.004
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    type: 'SYSCALL'
+    comm:
+      - 'claude'
+      - 'codex'
+      - 'gemini'
+      - 'aider'
+      - 'goose'
+      - 'cursor-agent'
+      - 'opencode'
+      - 'copilot'
+      - 'q'
+      - 'qchat'
+      - 'kiro-cli'
+    tty: '(none)'
+  filter_no_login:
+    auid:
+      - '4294967295'
+      - '-1'
+      - 'unset'
+  condition: selection and not filter_no_login
+fields:
+  - comm
+  - exe
+  - auid
+  - uid
+  - ses
+  - ppid
+  - pid
+falsepositives:
+  - Agents legitimately run non-interactively by developers on shared hosts
+  - Unrelated programs whose name collides (notably "q" and "goose"); confirm with the exe field
+level: medium

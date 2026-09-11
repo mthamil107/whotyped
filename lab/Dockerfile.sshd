@@ -1,0 +1,53 @@
+# Throwaway sshd for quick `whotyped simulate` and MCP-server tests.
+# auditd does NOT work inside a container (no access to the kernel audit socket), so this
+# image only produces sshd log lines. Use the cloud-init VMs for full recordings.
+FROM ubuntu:24.04
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      openssh-server sudo python3 jq ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /run/sshd \
+ && for u in alice bob deploy; do \
+      useradd -m -s /bin/bash "$u" && passwd -d "$u"; \
+    done \
+ && usermod -aG sudo alice \
+ && echo 'alice ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/alice \
+ && echo 'Defaults env_keep += "AI_AGENT AI_AGENT_SESSION AI_AGENT_OPERATOR"' > /etc/sudoers.d/ai-agent-envkeep \
+ && chmod 0440 /etc/sudoers.d/alice /etc/sudoers.d/ai-agent-envkeep
+
+# authorized_keys are bind-mounted from ./keys at runtime (see docker-compose.yml).
+COPY <<'EOF' /etc/ssh/sshd_config.d/50-whotyped.conf
+LogLevel VERBOSE
+AcceptEnv AI_AGENT AI_AGENT_*
+PermitUserEnvironment AI_AGENT,AI_AGENT_*
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+EOF
+
+COPY <<'EOF' /etc/profile.d/ai-agent-prompt.sh
+if [ -n "$AI_AGENT" ]; then PS1="(agent:$AI_AGENT) $PS1"; fi
+EOF
+
+COPY <<'EOF' /usr/local/bin/entrypoint.sh
+#!/bin/sh
+set -e
+for u in alice bob deploy; do
+  h="/home/$u"
+  mkdir -p "$h/.ssh"
+  if [ -f "/keys/$u.pub" ]; then
+    cat "/keys/$u.pub" > "$h/.ssh/authorized_keys"
+  elif [ -f /keys/authorized_keys ]; then
+    cat /keys/authorized_keys > "$h/.ssh/authorized_keys"
+  fi
+  chown -R "$u:$u" "$h/.ssh"; chmod 700 "$h/.ssh"; chmod 600 "$h/.ssh/authorized_keys" 2>/dev/null || true
+done
+ssh-keygen -A
+# -e: log to stderr (container logs), -D: foreground. LOGLEVEL can be raised to DEBUG1 for banner tests.
+exec /usr/sbin/sshd -D -e -o "LogLevel=${SSHD_LOGLEVEL:-VERBOSE}"
+EOF
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 22
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

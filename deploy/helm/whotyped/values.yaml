@@ -1,0 +1,78 @@
+image:
+  repository: ghcr.io/whotyped/whotyped
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Run on every node by default; restrict with nodeSelector or tolerations.
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations:
+  - operator: Exists   # include control-plane and tainted nodes; SSH happens there too
+affinity: {}
+priorityClassName: ""
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 48Mi
+  limits:
+    memory: 128Mi
+
+# whotyped needs to read other users' /proc/<pid>/environ and /var/log/audit, hence root.
+# hostPID exposes the node's processes; hostNetwork is not needed and stays off.
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  privileged: false
+  capabilities:
+    drop: ["ALL"]
+    add: ["SYS_PTRACE", "DAC_READ_SEARCH"]
+
+hostPaths:
+  proc: /proc
+  varLog: /var/log
+  auditLog: /var/log/audit
+  journal: /run/systemd/journal
+  state: /var/lib/whotyped
+
+serviceAccount:
+  create: true
+  name: ""
+
+# Rendered to /etc/whotyped/config.yaml. Reference: deploy/config.example.yaml.
+config:
+  privacy:
+    command_text: redacted
+    hash_usernames: false
+  sinks:
+    jsonfile:
+      enabled: true
+      path: /var/lib/whotyped/alerts.jsonl
+    syslog:
+      enabled: false
+    webhook:
+      enabled: false
+      url: ""
+      min_level: alert
+    prometheus:
+      enabled: true
+      listen: "0.0.0.0:9477"
+  freeze_windows: []
+  allowlist:
+    profiles_enabled: []   # names from rules/allowlist.yaml, e.g. [ansible, vscode-remote]
+
+# Extra args appended to `whotyped run`.
+extraArgs: []
+
+# Prometheus scraping via pod annotations (or use a ServiceMonitor of your own).
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9477"
