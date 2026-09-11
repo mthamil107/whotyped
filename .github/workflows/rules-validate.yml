@@ -1,0 +1,36 @@
+name: Rules
+
+on:
+  pull_request:
+    paths:
+      - "rules/**"
+      - "internal/rules/**"
+      - "internal/clues/**"
+      - "testdata/dataset/**"
+  push:
+    branches: [main]
+    paths:
+      - "rules/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: validate the shipped packs
+        run: go run ./cmd/whotyped rules validate rules/
+      - name: list agents
+        run: go run ./cmd/whotyped rules list
+      - name: scenarios still score as labelled
+        run: |
+          go test ./internal/score/ -run TestDataset -v
+          for s in human ansible claude-bash paramiko-mcp local-agent declared; do
+            go run ./cmd/whotyped simulate --offline --scenario "$s" >/dev/null || exit 1
+          done

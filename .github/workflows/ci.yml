@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        shell: bash
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - name: go test (race)
+        if: runner.os == 'Linux'
+        run: go test -race ./...
+      - name: go test
+        if: runner.os == 'Windows'
+        run: go test ./...
+      - name: offline simulation
+        shell: bash
+        run: |
+          go run ./cmd/whotyped simulate --offline --scenario claude-bash
+          go run ./cmd/whotyped simulate --offline --scenario paramiko-mcp
+          go run ./cmd/whotyped run --replay testdata/dataset/mcp-paramiko/events.jsonl --dry-run | grep -q '"event":"agent_detected"'
+
+  cross:
+    name: cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: linux/amd64 and linux/arm64
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          GOOS=linux GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/whotyped
+          GOOS=linux GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/whotyped
+          GOOS=linux GOARCH=arm64 go vet ./...

@@ -1,0 +1,6 @@
+{
+  "score_min": 0,
+  "score_max": 100,
+  "class": "declared_agent",
+  "notes": "Agent declares itself via AI_AGENT (AcceptEnv) and the procfs reader sees it in the session shell env. Class is declared_agent whatever the score."
+}

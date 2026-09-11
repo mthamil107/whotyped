@@ -1,0 +1,8 @@
+{
+  "score_min": 80,
+  "score_max": 95,
+  "class": "suspected_agent",
+  "level": "alert",
+  "mode": "remote_agent",
+  "notes": "MCP SSH server (paramiko) with a pooled connection: DEBUG1 banner, 12 exec channels, no PTY, bash -c wrappers with output guards."
+}

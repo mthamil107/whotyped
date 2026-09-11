@@ -1,0 +1,165 @@
+# goreleaser configuration for whotyped (https://goreleaser.com).
+# Release: push a tag v* and .github/workflows/release.yml runs this.
+# Local dry run: make release-snapshot
+version: 2
+
+project_name: whotyped
+
+before:
+  hooks:
+    - go mod verify
+    - go vet ./...
+
+builds:
+  - id: whotyped
+    main: ./cmd/whotyped
+    binary: whotyped
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/whotyped/whotyped/internal/version.Version={{ .Version }}
+      - -X github.com/whotyped/whotyped/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/whotyped/whotyped/internal/version.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: tarballs
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - deploy/config.example.yaml
+      - deploy/whotyped.service
+      - deploy/audit.rules
+      - deploy/sshd/90-whotyped.conf
+      - deploy/sigma/**
+      - deploy/wazuh/**
+      - deploy/falco/**
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+sboms:
+  - id: archive-sbom
+    artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.spdx.json"
+    cmd: syft
+    args: ["$artifact", "--output", "spdx-json=$document"]
+
+signs:
+  - id: cosign-keyless
+    cmd: cosign
+    artifacts: checksum
+    output: true
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --yes
+      - --oidc-issuer=https://token.actions.githubusercontent.com
+      - --output-certificate=${certificate}
+      - --output-signature=${signature}
+      - --bundle=${artifact}.bundle
+      - ${artifact}
+
+nfpms:
+  - id: packages
+    package_name: whotyped
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: whotyped
+    homepage: https://github.com/whotyped/whotyped
+    maintainer: Thamil <mthamil107@gmail.com>
+    description: |-
+      Tells server operators when an AI agent, rather than a human, is working
+      on a Linux host over SSH. Reads sshd logs, auditd and /proc; scores
+      sessions 0-100; alerts to a JSON file, syslog, webhook, email, Prometheus.
+    license: Apache-2.0
+    section: admin
+    priority: optional
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    recommends:
+      - auditd
+    suggests:
+      - openssh-server
+    contents:
+      - src: deploy/config.example.yaml
+        dst: /etc/whotyped/config.yaml
+        type: config|noreplace
+        file_info:
+          mode: 0640
+      - src: deploy/whotyped.service
+        dst: /usr/lib/systemd/system/whotyped.service
+        file_info:
+          mode: 0644
+      - src: deploy/audit.rules
+        dst: /usr/share/whotyped/audit.rules
+      - src: deploy/sshd/90-whotyped.conf
+        dst: /usr/share/whotyped/sshd/90-whotyped.conf
+      - src: deploy/sigma/
+        dst: /usr/share/whotyped/sigma
+      - src: deploy/wazuh/
+        dst: /usr/share/whotyped/wazuh
+      - src: deploy/falco/
+        dst: /usr/share/whotyped/falco
+      - src: LICENSE
+        dst: /usr/share/doc/whotyped/LICENSE
+      - dst: /var/lib/whotyped
+        type: dir
+        file_info:
+          mode: 0750
+      - dst: /etc/whotyped/rules.d
+        type: dir
+        file_info:
+          mode: 0755
+    scripts:
+      postinstall: deploy/postinstall.sh
+      preremove: deploy/preremove.sh
+    deb:
+      lintian_overrides:
+        - statically-linked-binary
+    rpm:
+      summary: Detect AI agents on your servers over SSH
+      group: Applications/System
+
+release:
+  github:
+    owner: whotyped
+    name: whotyped
+  prerelease: auto
+  draft: false
+  name_template: "whotyped {{ .Version }}"
+  footer: |
+    ## Verify
+
+    ```sh
+    cosign verify-blob --bundle checksums.txt.bundle \
+      --certificate-identity-regexp 'https://github.com/whotyped/whotyped/.*' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+    sha256sum -c checksums.txt --ignore-missing
+    ```
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"

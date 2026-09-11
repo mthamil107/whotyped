@@ -1,0 +1,7 @@
+{
+  "score_min": 0,
+  "score_max": 10,
+  "class": "human",
+  "level": "none",
+  "notes": "Interactive admin in a PTY for ~13 min; OpenSSH banner and long PTY are negative clues."
+}

@@ -1,0 +1,8 @@
+{
+  "score_min": 95,
+  "score_max": 100,
+  "class": "suspected_agent",
+  "level": "high",
+  "mode": "local_agent",
+  "notes": "Human sshes in, then runs claude --dangerously-skip-permissions in the PTY: agent process, skip flag, CLAUDECODE children, api.anthropic.com. pty.interactive is dropped because process \u003e 0."
+}

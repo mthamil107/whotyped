@@ -1,0 +1,66 @@
+# whotyped systemd unit. Installed by the deb/rpm as
+# /usr/lib/systemd/system/whotyped.service.
+#
+# Runs as root inside a tight sandbox. Why root and these capabilities:
+#   CAP_DAC_READ_SEARCH  read /var/log/auth.log, /var/log/secure and
+#                        /var/log/audit/audit.log (0600 root) without being
+#                        in the adm/audit groups, and read every
+#                        /proc/PID/cmdline.
+#   CAP_SYS_PTRACE       read /proc/PID/environ of processes owned by other
+#                        users. That is where AI_AGENT (declared agents) and
+#                        markers such as CLAUDECODE=1 live. Without it only
+#                        process names and argv are scored.
+#   CAP_SYSLOG           read the journal via journalctl when the unit is not
+#                        in systemd-journal, and write to /dev/log for the
+#                        syslog sink.
+# Everything else is dropped. The daemon makes no outbound connection unless a
+# webhook or email sink is configured.
+
+[Unit]
+Description=whotyped - tells you when an AI agent, not a human, is on this server
+Documentation=https://github.com/whotyped/whotyped
+After=network.target auditd.service
+Wants=auditd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/whotyped run --config /etc/whotyped/config.yaml
+Restart=on-failure
+RestartSec=5
+User=root
+Group=root
+UMask=0027
+LimitNOFILE=65536
+
+# State (state.json, alerts.jsonl) lives here; everything else is read-only.
+StateDirectory=whotyped
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/whotyped
+
+# Sandbox
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE CAP_SYSLOG
+AmbientCapabilities=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE CAP_SYSLOG
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# No PrivateDevices: the syslog sink writes to /dev/log.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=default
+ProcSubset=all
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target
