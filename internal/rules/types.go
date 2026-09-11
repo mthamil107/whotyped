@@ -67,12 +67,18 @@ type Match struct {
 	MinMatchRatio float64       `yaml:"min_match_ratio,omitempty" json:"min_match_ratio,omitempty"`
 }
 
-// MatchClause is one OR-alternative inside Match.AnyOf.
+// MatchClause is one OR-alternative inside Match.AnyOf. Required marks a
+// clause that at least one exec channel must satisfy on its own, on top of
+// the min_match_ratio over all clauses: "at least one command under
+// ~/.vscode-server, and most commands either that or git polling". It is an
+// additive, backwards-compatible field; profiles that omit it behave as
+// before.
 type MatchClause struct {
 	CmdRegex    string `yaml:"cmd_regex,omitempty" json:"cmd_regex,omitempty"`
 	Argv0Regex  string `yaml:"argv0_regex,omitempty" json:"argv0_regex,omitempty"`
 	PathRegex   string `yaml:"path_regex,omitempty" json:"path_regex,omitempty"`
 	BannerRegex string `yaml:"banner_regex,omitempty" json:"banner_regex,omitempty"`
+	Required    bool   `yaml:"required,omitempty" json:"required,omitempty"`
 }
 
 // Profile is an allowlist profile.

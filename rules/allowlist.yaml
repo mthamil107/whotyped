@@ -4,8 +4,12 @@
 # (allowlist.profiles_enabled). A profile matches a track when all of the
 # populated `match` fields agree: users / src_cidrs / fingerprints (empty =
 # any) and at least `min_match_ratio` of the track's exec channels satisfy
-# one of the `any_of` clauses. Matching profiles zero the listed clue ids
-# or whole categories and optionally cap the score. Profiles can never
+# one of the `any_of` clauses. A clause marked `required: true` must in
+# addition be satisfied by at least one exec channel on its own, so a
+# generic pattern (git polling) can fill the ratio without being enough by
+# itself. Matching profiles zero the listed clue ids, id prefixes
+# (`style.pager_guard`) or whole categories and optionally cap the score.
+# Profiles can never
 # suppress process, flags or identity clues (proc.*, env.ai_agent): an AI
 # agent that runs inside an allowlisted automation is still an AI agent.
 #
@@ -46,25 +50,33 @@ profiles:
       VS Code Remote-SSH, Cursor Remote-SSH and code-server. The remote
       server (`node .../server-main.js --start-server` under
       ~/.vscode-server, ~/.cursor-server or a code-server install) spawns
-      shells, git and file watchers in bursts without a PTY. Suppresses the
-      rhythm/pty/wrapper noise of the IDE itself. It does NOT suppress
-      cursor-agent, claude, or any other agent process started from the
-      IDE terminal: process, flags and identity clues always stand, and the
-      style patterns that agents produce (heredoc, compound) are left in.
+      shells, git and file watchers in bursts without a PTY. The install
+      script is `bash -c '... && cd ~/.vscode-server/bin && curl ...'`
+      (compound, tool_wrapper, abs_paths) and the git extension polls with
+      `git -c core.quotepath=false -c color.ui=false status|rev-parse|...`
+      every few seconds (rhythm). Plain git commands are far too generic to
+      allowlist on their own, so the server-path clause is required: at
+      least one command must live under the IDE's server directory, and
+      then half or more of the commands must be either that or git polling.
+      It does NOT suppress cursor-agent, claude, or any other agent process
+      started from the IDE terminal: process, flags and identity clues
+      always stand, and style.heredoc is left in.
     match:
       min_match_ratio: 0.5
       any_of:
-        - path_regex: '/\.(?:vscode-server|vscode-server-insiders|cursor-server)/'
-        - cmd_regex: '/\.(?:vscode-server|vscode-server-insiders|cursor-server)/'
-        - cmd_regex: 'server-main\.js\s+--start-server'
-        - cmd_regex: '(?:^|/)code-server(?:\s|$)'
+        - required: true
+          path_regex: '/\.(?:vscode-server|vscode-server-insiders|cursor-server)/|/code-server(?:/|\s|$)'
+        - cmd_regex: '/\.(?:vscode-server|vscode-server-insiders|cursor-server)/|server-main\.js\s+--start-server|(?:^|/)code-server(?:\s|$)'
         - argv0_regex: '^(?:.*/)?(?:cursor-server|code-server)$'
+        - cmd_regex: '^(?:\S*/)?git\s+(?:-[cC]\s+\S+\s+)*(?:rev-parse|status|for-each-ref|config|fetch|show|log|diff|ls-files|ls-tree|cat-file|symbolic-ref|check-ignore|blame|remote|stash|worktree|merge-base|branch|tag)\b'
     suppress:
       - rhythm
       - pty.none
+      - style.compound
       - style.tool_wrapper
       - style.abs_paths
       - style.pager_guard
+    max_score: 30
 
   - id: github-runner
     description: >-

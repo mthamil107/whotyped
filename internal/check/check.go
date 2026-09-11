@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -316,18 +317,36 @@ func (r *runner) checkSSHDVersion() {
 		r.warn("sshd.version", "could not determine the OpenSSH version (sshd -V / ssh -V)", "install openssh-server; whotyped reads its logs")
 		return
 	}
-	m := opensshVersionRe.FindStringSubmatch(out)
 	detail := out
-	if len(m) == 3 {
-		major, minor := m[1], m[2]
-		switch {
-		case major > "9" || (major == "9" && minor >= "8"):
+	if major, minor, ok := parseOpenSSHVersion(out); ok {
+		if versionAtLeast(major, minor, 9, 8) {
 			detail += " (>= 9.8: per-connection process is sshd-session, handled)"
-		default:
+		} else {
 			detail += " (< 9.8: per-connection process is sshd)"
 		}
 	}
 	r.pass("sshd.version", detail)
+}
+
+// parseOpenSSHVersion extracts major.minor from a version banner such as
+// "OpenSSH_10.0p2 Ubuntu-1" or "OpenSSH_9.8". The portable suffix (p1, p2)
+// and vendor tail are ignored. Numeric on purpose: compared as strings,
+// "10" sorts before "9" and OpenSSH 10.x would be reported as < 9.8.
+func parseOpenSSHVersion(s string) (major, minor int, ok bool) {
+	m := opensshVersionRe.FindStringSubmatch(s)
+	if len(m) != 3 {
+		return 0, 0, false
+	}
+	major, err1 := strconv.Atoi(m[1])
+	minor, err2 := strconv.Atoi(m[2])
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
+
+func versionAtLeast(major, minor, wantMajor, wantMinor int) bool {
+	return major > wantMajor || (major == wantMajor && minor >= wantMinor)
 }
 
 func firstLine(s string) string {

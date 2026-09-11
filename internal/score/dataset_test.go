@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/whotyped/whotyped/internal/rules"
 	"github.com/whotyped/whotyped/internal/session"
 )
 
@@ -81,8 +82,16 @@ func runScenario(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 
+	// The dataset is labelled against the shipped rule pack (every profile
+	// enabled, as simulate --offline assumes), not the unit-test pack: a
+	// profile that only works in testpack_test.go would pass here and still
+	// fail in the field.
+	pack, err := rules.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	c := session.New(session.Options{})
-	verdicts := Replay(events, c, newTestScorer(), testPack())
+	verdicts := Replay(events, c, newTestScorer(), pack)
 	if len(verdicts) == 0 {
 		t.Fatal("replay produced no tracks")
 	}

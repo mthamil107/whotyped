@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -92,8 +91,9 @@ type Scoring struct {
 
 // Privacy controls what reaches the alert evidence.
 type Privacy struct {
-	CommandText   string `yaml:"command_text"` // redacted | full | none
-	HashUsernames bool   `yaml:"hash_usernames"`
+	CommandText   string `yaml:"command_text"`   // redacted | full | none
+	HashUsernames bool   `yaml:"hash_usernames"` // alert.user becomes u_<12 hex of sha256(hash_salt+user)>
+	HashSalt      string `yaml:"hash_salt"`      // default: the host name; set fleet-wide for stable ids
 }
 
 // FreezeWindow is a period in which any agent activity is a violation. Give
@@ -194,7 +194,7 @@ func Default() Config {
 			RealertInterval:      Duration(30 * time.Minute),
 			RequireTwoCategories: true,
 		},
-		Privacy:   Privacy{CommandText: "redacted"},
+		Privacy:   Privacy{CommandText: "redacted", HashSalt: host},
 		Allowlist: Allowlist{ProfilesEnabled: []string{}},
 		Sinks: Sinks{
 			JSONFile:   JSONFileSink{Enabled: true, Path: "/var/lib/whotyped/alerts.jsonl", MaxSizeMB: 50, Keep: 5, MinLevel: "info"},
@@ -279,7 +279,7 @@ var (
 	sshSources   = map[string]bool{"auto": true, "journald": true, "file": true}
 	facilities   = map[string]bool{"auth": true, "authpriv": true, "daemon": true, "user": true, "syslog": true,
 		"local0": true, "local1": true, "local2": true, "local3": true, "local4": true, "local5": true, "local6": true, "local7": true}
-	formatRe = regexp.MustCompile(`^[a-z0-9_-]+$`)
+	webhookFormats = map[string]bool{"json": true, "generic": true, "slack": true, "teams": true, "discord": true}
 )
 
 // Validate checks values, not the environment: it does not test whether
@@ -322,6 +322,9 @@ func (c Config) Validate() error {
 	}
 	if !commandTexts[c.Privacy.CommandText] {
 		add("privacy.command_text %q: want redacted|full|none", c.Privacy.CommandText)
+	}
+	if c.Privacy.HashUsernames && c.Privacy.HashSalt == "" && c.Host == "" {
+		add("privacy.hash_salt is required when hash_usernames is set and host is empty")
 	}
 
 	names := map[string]bool{}
@@ -394,8 +397,8 @@ func (c Config) Validate() error {
 		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
 			add("sinks.webhook.url must be an http(s) URL")
 		}
-		if !formatRe.MatchString(s.Format) {
-			add("sinks.webhook.format %q: want a lowercase token such as json or slack", s.Format)
+		if !webhookFormats[strings.ToLower(s.Format)] {
+			add("sinks.webhook.format %q: want json|slack|teams|discord", s.Format)
 		}
 		if !levels[s.MinLevel] {
 			add("sinks.webhook.min_level %q: want info|alert|high", s.MinLevel)

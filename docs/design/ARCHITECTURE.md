@@ -105,7 +105,7 @@ Score = min(100, sum over categories of min(cap, sum of clue weights)), then neg
 | style | style.heredoc | 10 | 30 |
 | style | style.compound (cd X && … with >=2 operators, len > 80) | 10 | |
 | style | style.tool_wrapper (bash -lc, sh -c) | 8 | |
-| style | style.pager_guard (--no-pager, \| head -n, \| tail -n, sed -n, 2>&1, timeout N) | 5 each, max 15 | |
+| style | style.pager_guard.{nopager, head, tail, sed_range, stderr_merge, timeout} (--no-pager, \| head -n, \| tail -n, sed -n, 2>&1, timeout N) | 5 each, max 15 | |
 | style | style.abs_paths | 5 | |
 | process | proc.agent_name | 45 | 45 |
 | process | proc.agent_env | 40 | |

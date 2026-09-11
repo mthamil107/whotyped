@@ -221,3 +221,82 @@ func TestTimeout(t *testing.T) {
 		t.Fatalf("timeout should be transient: %v", err)
 	}
 }
+
+func TestDiscordFormat(t *testing.T) {
+	c := &capture{}
+	srv := c.server()
+	defer srv.Close()
+	s := New(srv.URL, "discord", time.Second, nil)
+	if s.Name() != "webhook:discord" {
+		t.Fatalf("name %q", s.Name())
+	}
+	a := sample()
+	a.Reasons[1].Evidence = "bash -lc `cat *.env` | head" // markdown-significant characters
+	a.FreezeWindow = &alert.Freeze{Name: "release", Until: a.TS.Add(time.Hour)}
+	if err := s.Send(context.Background(), a); err != nil {
+		t.Fatal(err)
+	}
+	m := decode(t, c.body)
+	if !strings.Contains(m["content"].(string), "alice@10.0.0.5 score 82") {
+		t.Errorf("content %q", m["content"])
+	}
+	embeds := m["embeds"].([]any)
+	if len(embeds) != 1 {
+		t.Fatalf("embeds %v", embeds)
+	}
+	e := embeds[0].(map[string]any)
+	if e["title"] != "whotyped: agent_detected on web-03" || e["color"] != float64(0xE67E22) {
+		t.Errorf("title/color %v %v", e["title"], e["color"])
+	}
+	desc := e["description"].(string)
+	if !strings.Contains(desc, "rhythm.burst (20)") || strings.Contains(desc, "`cat *.env`") || !strings.Contains(desc, "\\`cat \\*.env\\`") {
+		t.Errorf("description not escaped: %q", desc)
+	}
+	fields := e["fields"].([]any)
+	if len(fields) != 8 {
+		t.Fatalf("fields %d", len(fields))
+	}
+	first := fields[0].(map[string]any)
+	if first["name"] != "User" || first["value"] != "alice" || first["inline"] != true {
+		t.Errorf("first field %v", first)
+	}
+	last := fields[7].(map[string]any)
+	if last["name"] != "Freeze window" || !strings.Contains(last["value"].(string), "release until 2026-09-11T15:03:22Z") {
+		t.Errorf("freeze field %v", last)
+	}
+	if e["footer"].(map[string]any)["text"] != a.ActionsHint || e["timestamp"] != "2026-09-11T14:03:22Z" {
+		t.Errorf("footer/timestamp %v %v", e["footer"], e["timestamp"])
+	}
+
+	// High is red; an empty field value becomes "-" rather than an invalid embed.
+	a.Level = score.LevelHigh
+	a.SrcIP = ""
+	b, err := Payload(FormatDiscord, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e = decode(t, b)["embeds"].([]any)[0].(map[string]any)
+	if e["color"] != float64(0xE74C3C) || e["fields"].([]any)[1].(map[string]any)["value"] != "-" {
+		t.Errorf("high/empty handling: %v", e)
+	}
+}
+
+// TestAllFormatsRender: every config-accepted format produces JSON, and
+// "json" is the generic format under its config name.
+func TestAllFormatsRender(t *testing.T) {
+	for _, f := range []string{FormatGeneric, FormatJSON, FormatSlack, FormatTeams, FormatDiscord} {
+		b, err := Payload(f, sample())
+		if err != nil || len(b) == 0 {
+			t.Errorf("%s: %v", f, err)
+		}
+		decode(t, b)
+	}
+	g, _ := Payload(FormatGeneric, sample())
+	j, _ := Payload(FormatJSON, sample())
+	if string(g) != string(j) {
+		t.Error("json must be an alias of generic")
+	}
+	if New("http://x", "JSON", 0, nil).Name() != "webhook:generic" || New("http://x", "", 0, nil).Name() != "webhook:generic" {
+		t.Error("New must normalise json/empty to generic")
+	}
+}

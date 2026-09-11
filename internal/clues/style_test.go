@@ -34,8 +34,8 @@ func TestStyleBuiltins(t *testing.T) {
 			"sed -n '10,40p' /etc/nginx/nginx.conf",
 			"timeout 30 systemctl status app 2>&1 | head -20",
 		}, map[string]int{
-			"style.pager_guard.no_pager": 5, "style.pager_guard.head": 5, "style.pager_guard.tail": 5,
-			"style.pager_guard.sed_range": 5, "style.pager_guard.stderr": 5, "style.pager_guard.timeout": 5,
+			"style.pager_guard.nopager": 5, "style.pager_guard.head": 5, "style.pager_guard.tail": 5,
+			"style.pager_guard.sed_range": 5, "style.pager_guard.stderr_merge": 5, "style.pager_guard.timeout": 5,
 		}, "--no-pager (2x)", "nginx.conf"},
 		{"abs-paths-needs-three-cmds", []string{
 			"cp /etc/a /etc/b /var/tmp/c", "diff /srv/x /srv/y /srv/z",
@@ -112,4 +112,42 @@ func TestStyleSkipsSamplesWithoutText(t *testing.T) {
 		t.Fatalf("unexpected clues %v", got)
 	}
 	_ = session.ExecSample{}
+}
+
+// TestStyleIDsAgainstEmbeddedPack pins the exact clue ids the detector emits
+// with the shipped rules/styles.yaml. Pack ids already carry the "style."
+// prefix; a regression here would surface as "style.style.compound" in
+// alerts and break allowlist suppress entries and the pager_guard cap.
+func TestStyleIDsAgainstEmbeddedPack(t *testing.T) {
+	pack, err := rules.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := mkTrack("alice", "10.0.0.5")
+	addCmds(tr,
+		"bash -lc 'cd /srv/app && git --no-pager log -3 2>&1 | head -n 20'",
+		"cat <<'EOF' > /tmp/x\nhello\nEOF",
+		"timeout 30 sh -c 'sed -n \"10,20p\" /etc/hosts | tail -n 5'",
+		"ls -la /home/deploy/app/config /home/deploy/app/logs",
+		"PAGER=cat git diff /srv/app/a /srv/app/b",
+	)
+	got := ids((Style{}).Evaluate(tr, pack, at(500)))
+	want := []string{
+		"style.heredoc", "style.compound", "style.tool_wrapper", "style.abs_paths",
+		"style.pager_guard.nopager", "style.pager_guard.head", "style.pager_guard.tail",
+		"style.pager_guard.sed_range", "style.pager_guard.stderr_merge", "style.pager_guard.timeout",
+	}
+	if len(got) != len(want) {
+		t.Errorf("got %d ids %v, want %d", len(got), got, len(want))
+	}
+	for _, id := range want {
+		if _, ok := got[id]; !ok {
+			t.Errorf("missing %s in %v", id, got)
+		}
+	}
+	for id := range got {
+		if strings.HasPrefix(id, "style.style.") || strings.Contains(id, ".style.") {
+			t.Errorf("doubled prefix in %s", id)
+		}
+	}
 }

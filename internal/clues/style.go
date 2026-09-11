@@ -52,12 +52,12 @@ var (
 	reWrapper  = regexp.MustCompile(`^(?:\S*/)?(?:ba|z|da|k)?sh\s+-l?c\s`)
 	reAbsPath  = regexp.MustCompile(`(?:^|[\s='"(])(/(?:[\w.@+-]+/)*[\w.@+-]+)`)
 	rePagerSet = map[string]*regexp.Regexp{
-		"no_pager":  regexp.MustCompile(`--no-pager\b`),
-		"head":      regexp.MustCompile(`\|\s*head\s+(?:-n\s*)?-?\d+`),
-		"tail":      regexp.MustCompile(`\|\s*tail\s+(?:-n\s*)?-?\d+`),
-		"sed_range": regexp.MustCompile(`\bsed\s+-n\s+['"]?\d+,\d+p`),
-		"stderr":    regexp.MustCompile(`2>&1`),
-		"timeout":   regexp.MustCompile(`(?:^|[;&|]\s*)timeout\s+\d+[smh]?\s`),
+		"nopager":      regexp.MustCompile(`--no-pager\b`),
+		"head":         regexp.MustCompile(`\|\s*head\s+(?:-n\s*)?-?\d+`),
+		"tail":         regexp.MustCompile(`\|\s*tail\s+(?:-n\s*)?-?\d+`),
+		"sed_range":    regexp.MustCompile(`\bsed\s+-n\s+['"]?\d+,\d+p`),
+		"stderr_merge": regexp.MustCompile(`2>&1`),
+		"timeout":      regexp.MustCompile(`(?:^|[;&|]\s*)timeout\s+\d+[smh]?\s`),
 	}
 )
 
@@ -68,7 +68,7 @@ func builtinStyles() []styleRule {
 		{id: "compound", weight: WeightStyleCompound, minCmds: 1, fn: matchCompound},
 		{id: "tool_wrapper", weight: WeightStyleToolWrapper, minCmds: 1, re: reWrapper},
 	}
-	for _, name := range []string{"no_pager", "head", "tail", "sed_range", "stderr", "timeout"} {
+	for _, name := range []string{"nopager", "head", "tail", "sed_range", "stderr_merge", "timeout"} {
 		rs = append(rs, styleRule{id: GroupPagerGuard + "." + name, weight: WeightStylePagerGuard, group: GroupPagerGuard, minCmds: 1, re: rePagerSet[name]})
 	}
 	return append(rs, absPathsRule())
@@ -91,12 +91,8 @@ func packStyles(p *rules.Pack) []styleRule {
 		if re == nil {
 			continue
 		}
-		id := s.ID
-		if s.Group != "" {
-			id = strings.TrimPrefix(strings.TrimPrefix(id, s.Group+"_"), s.Group+".")
-			id = s.Group + "." + id
-		}
-		if s.ID == "abs_paths" {
+		id := styleRuleID(s)
+		if id == "abs_paths" {
 			hasAbs = true
 		}
 		rs = append(rs, styleRule{id: id, weight: s.Weight, group: s.Group, minCmds: 1, re: re})
@@ -105,6 +101,22 @@ func packStyles(p *rules.Pack) []styleRule {
 		rs = append(rs, absPathsRule())
 	}
 	return rs
+}
+
+// styleRuleID derives the clue id suffix from a pack style. Pack ids carry
+// the "style." prefix the loader requires ("style.compound"); Evaluate adds
+// that prefix back when it emits the clue, so it is stripped here or the
+// clue would read "style.style.compound". Grouped rules are nested under the
+// group ("style.head" in group pager_guard -> "pager_guard.head") so the
+// scorer's shared cap and a "style.pager_guard" suppress entry catch them;
+// a rule already named "<group>_x" or "<group>.x" is not doubled.
+func styleRuleID(s rules.Style) string {
+	id := strings.TrimPrefix(s.ID, "style.")
+	if s.Group != "" {
+		id = strings.TrimPrefix(strings.TrimPrefix(id, s.Group+"_"), s.Group+".")
+		id = s.Group + "." + id
+	}
+	return id
 }
 
 // Evaluate implements Detector. Each style counts once per command; the clue

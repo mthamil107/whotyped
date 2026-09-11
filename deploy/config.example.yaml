@@ -75,8 +75,13 @@ privacy:
   #   full      the whole command line (sensitive: may contain secrets)
   #   none      no command text at all
   command_text: redacted
-  # Replace user names with a salted hash in alerts and state.
+  # Replace user names in alerts with u_<first 12 hex of sha256(hash_salt + user)>;
+  # the actions_hint then says "the key owner" instead of the name. Only what
+  # leaves the host is hashed: state.json and `whotyped report` keep real names.
   hash_usernames: false
+  # Salt for hash_usernames. Default: this host's name, so the same user hashes
+  # differently on every host. Set one value fleet-wide for stable ids.
+  # hash_salt: change-me
 
 # Freeze windows: any declared or suspected (>= info threshold) agent
 # activity inside a window is a freeze_violation. Two forms:

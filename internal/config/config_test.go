@@ -132,6 +132,8 @@ func TestValidateErrors(t *testing.T) {
 		{"webhook scheme", "sinks:\n  webhook:\n    enabled: true\n    url: ftp://x/y\n", "sinks.webhook.url"},
 		{"webhook no host", "sinks:\n  webhook:\n    enabled: true\n    url: https://\n", "sinks.webhook.url"},
 		{"command_text", "privacy:\n  command_text: verbose\n", "privacy.command_text"},
+		{"webhook format", "sinks:\n  webhook:\n    enabled: true\n    url: https://h/x\n    format: pagerduty\n", "sinks.webhook.format"},
+		{"hash salt", "host: ''\nprivacy:\n  hash_usernames: true\n  hash_salt: ''\n", "privacy.hash_salt"},
 		{"sshlog source", "readers:\n  sshlog:\n    source: magic\n", "readers.sshlog.source"},
 		{"sshlog file", "readers:\n  sshlog:\n    source: file\n", "readers.sshlog.file"},
 		{"cron", "freeze_windows:\n  - name: x\n    cron: 'bad'\n    duration: 1h\n", "cron"},
@@ -214,5 +216,25 @@ func TestExampleConfigLoads(t *testing.T) {
 	}
 	if len(cfg.FreezeWindows) == 0 {
 		t.Error("example should demonstrate a freeze window")
+	}
+}
+
+func TestWebhookFormatsAndHashSalt(t *testing.T) {
+	for _, f := range []string{"json", "slack", "teams", "discord", "generic"} {
+		cfg, err := Parse(strings.NewReader("sinks:\n  webhook:\n    enabled: true\n    url: https://h/x\n    format: " + f + "\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("format %s rejected: %v", f, err)
+		}
+	}
+	cfg := Default()
+	if cfg.Privacy.HashSalt == "" || cfg.Privacy.HashSalt != cfg.Host {
+		t.Errorf("hash_salt should default to the host name, got %q (host %q)", cfg.Privacy.HashSalt, cfg.Host)
+	}
+	cfg, err := Parse(strings.NewReader("privacy:\n  hash_usernames: true\n  hash_salt: pepper\n"))
+	if err != nil || !cfg.Privacy.HashUsernames || cfg.Privacy.HashSalt != "pepper" {
+		t.Fatalf("privacy parse: %+v %v", cfg.Privacy, err)
 	}
 }

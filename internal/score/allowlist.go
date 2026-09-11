@@ -66,8 +66,45 @@ func matchOne(t *session.Track, prof *rules.Profile) (bool, float64) {
 	if minRatio <= 0 {
 		minRatio = DefaultMinMatchRatio
 	}
+	if !requiredSatisfied(t, m.AnyOf) {
+		return false, 0
+	}
 	ratio := anyOfRatio(t, m.AnyOf)
 	return ratio >= minRatio, ratio
+}
+
+// requiredSatisfied checks every clause marked required: at least one exec
+// channel (or, for a banner clause, one banner) must match it. This lets a
+// profile demand a specific anchor ("some command under ~/.vscode-server")
+// while a generic pattern (git polling) is allowed to make up the ratio.
+func requiredSatisfied(t *session.Track, clauses []rules.MatchClause) bool {
+	for _, cl := range clauses {
+		if !cl.Required {
+			continue
+		}
+		hit := false
+		one := []rules.MatchClause{cl}
+		for _, e := range t.Execs {
+			if (e.Cmd != "" || e.Argv0 != "") && execMatches(e, one) {
+				hit = true
+				break
+			}
+		}
+		if !hit && cl.BannerRegex != "" {
+			if re := profileRegex(cl.BannerRegex); re != nil {
+				for _, b := range t.Banners() {
+					if re.MatchString(b) {
+						hit = true
+						break
+					}
+				}
+			}
+		}
+		if !hit {
+			return false
+		}
+	}
+	return true
 }
 
 func matchUser(user string, pats []string) bool {
@@ -203,20 +240,31 @@ func profileRegex(pattern string) *regexp.Regexp {
 	return re
 }
 
-// applyProfile zeroes the clues the profile suppresses (by clue id or
-// category) and returns the survivors plus the suppression records.
+// suppressed reports whether a suppress entry covers a clue: the category
+// name ("style"), the exact id ("style.tool_wrapper"), or a dotted prefix
+// segment ("style.pager_guard" covers "style.pager_guard.head" but not
+// "style.pager_guardian").
+func suppressed(entry string, c clues.Clue) bool {
+	return entry == string(c.Category) || entry == c.ID || strings.HasPrefix(c.ID, entry+".")
+}
+
+// applyProfile zeroes the clues the profile suppresses (by clue id, id
+// prefix or category) and returns the survivors plus the suppression records.
 func applyProfile(prof *rules.Profile, all []clues.Clue) ([]clues.Clue, []Suppression) {
 	if len(prof.Suppress) == 0 {
 		return all, []Suppression{}
 	}
-	sup := map[string]bool{}
-	for _, s := range prof.Suppress {
-		sup[s] = true
-	}
 	kept := make([]clues.Clue, 0, len(all))
 	out := []Suppression{}
 	for _, c := range all {
-		if !(sup[c.ID] || sup[string(c.Category)]) {
+		hit := false
+		for _, s := range prof.Suppress {
+			if suppressed(s, c) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
 			kept = append(kept, c)
 			continue
 		}

@@ -17,12 +17,6 @@ func TestOfflineScenariosPass(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var out bytes.Buffer
 			code := RunOffline(name, &out, false)
-			if name == "vscode-remote" && code == ExitMismatch {
-				// Known gap: the shipped vscode-remote profile in rules/allowlist.yaml
-				// does not match this dataset (the git polling lines carry no
-				// .vscode-server path), so the scenario scores 43 instead of <= 30.
-				t.Skipf("known rule-pack gap (exit %d)", code)
-			}
 			if code != ExitMatch {
 				t.Fatalf("exit %d\n%s", code, out.String())
 			}
@@ -34,7 +28,7 @@ func TestOfflineScenariosPass(t *testing.T) {
 }
 
 func TestOfflineKnownScores(t *testing.T) {
-	cases := map[string]int{"claude-bash": 75, "paramiko-mcp": 88, "local-agent": 100, "human": 0}
+	cases := map[string]int{"claude-bash": 75, "paramiko-mcp": 88, "local-agent": 100, "human": 0, "vscode": 0, "ansible": 0}
 	for alias, want := range cases {
 		res, err := Evaluate(alias)
 		if err != nil {

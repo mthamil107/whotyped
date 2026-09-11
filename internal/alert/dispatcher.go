@@ -2,6 +2,8 @@ package alert
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -47,6 +49,21 @@ type Options struct {
 	RetryBackoff []time.Duration
 	// SendTimeout bounds one Send call on a sink; default 30s.
 	SendTimeout time.Duration
+	// HashUsernames replaces Alert.User with HashUser(HashSalt, user) and
+	// keeps the raw name out of actions_hint (privacy.hash_usernames).
+	// HashSalt defaults to Host, so the same user hashes differently per
+	// host unless operators set one salt fleet-wide.
+	HashUsernames bool
+	HashSalt      string
+}
+
+// HashUser returns the pseudonym used when HashUsernames is set:
+// "u_" + first 12 hex digits of sha256(salt + user). 48 bits is plenty to
+// tell users on one fleet apart and short enough to read in a Slack card;
+// the salt keeps a dictionary of local account names from reversing it.
+func HashUser(salt, user string) string {
+	sum := sha256.Sum256([]byte(salt + user))
+	return "u_" + hex.EncodeToString(sum[:6])
 }
 
 // SinkStats counts what happened to alerts routed to one sink.
@@ -107,6 +124,9 @@ func New(opts Options) *Dispatcher {
 	}
 	if opts.SendTimeout <= 0 {
 		opts.SendTimeout = 30 * time.Second
+	}
+	if opts.HashSalt == "" {
+		opts.HashSalt = opts.Host
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Dispatcher{
@@ -447,6 +467,9 @@ func (d *Dispatcher) Build(t *session.Track, v score.Verdict, ev string, freeze 
 			fp = c.Fingerprint
 		}
 	}
+	if d.opts.HashUsernames && user != "" {
+		user = HashUser(d.opts.HashSalt, user)
+	}
 	mode := v.Mode
 	if mode == "" {
 		mode = t.Mode
@@ -516,7 +539,11 @@ func (d *Dispatcher) hint(a Alert, freeze *Freeze) string {
 	if a.Class == score.ClassDeclared {
 		return fmt.Sprintf("Declared agent %s is still active. Details: whotyped report --session %s", a.Agent, a.SessionID)
 	}
-	return fmt.Sprintf("Ask %s whether an AI tool is driving this key. Honest agents can declare themselves with: ssh -o SetEnv=AI_AGENT=<name> … Details: whotyped report --session %s", a.User, a.SessionID)
+	who := a.User
+	if d.opts.HashUsernames || who == "" {
+		who = "the key owner" // never echo a name the alert itself withholds
+	}
+	return fmt.Sprintf("Ask %s whether an AI tool is driving this key. Honest agents can declare themselves with: ssh -o SetEnv=AI_AGENT=<name> … Details: whotyped report --session %s", who, a.SessionID)
 }
 
 func (d *Dispatcher) levelFor(s int) score.Level {

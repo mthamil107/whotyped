@@ -453,3 +453,36 @@ func TestIsTransient(t *testing.T) {
 		t.Fatal("permanent errors misclassified")
 	}
 }
+
+func TestHashUsernames(t *testing.T) {
+	now := func() time.Time { return time.Date(2026, 9, 11, 14, 5, 0, 0, time.UTC) }
+	d := New(Options{Host: "web-03", HashUsernames: true, HashSalt: "pepper", Now: now})
+	a := d.Build(newTrack(), suspected(75), EvDetected, nil)
+	want := HashUser("pepper", "alice")
+	if a.User != want || !strings.HasPrefix(a.User, "u_") || len(a.User) != 14 {
+		t.Fatalf("user %q, want %q", a.User, want)
+	}
+	if strings.Contains(a.ActionsHint, "alice") || !strings.Contains(a.ActionsHint, "the key owner") {
+		t.Errorf("actions_hint leaks or misses: %q", a.ActionsHint)
+	}
+	b, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "alice") {
+		t.Errorf("serialised alert still carries the raw user: %s", b)
+	}
+	// Deterministic, salt-sensitive, and the salt defaults to the host.
+	if HashUser("pepper", "alice") != want || HashUser("salt2", "alice") == want || HashUser("pepper", "bob") == want {
+		t.Error("HashUser must be a deterministic salted hash")
+	}
+	d2 := New(Options{Host: "web-03", HashUsernames: true, Now: now})
+	if a2 := d2.Build(newTrack(), suspected(75), EvDetected, nil); a2.User != HashUser("web-03", "alice") {
+		t.Errorf("salt should default to host: %q", a2.User)
+	}
+	// Off by default: the raw name is kept and the hint addresses it.
+	d3 := New(Options{Host: "web-03", Now: now})
+	if a3 := d3.Build(newTrack(), suspected(75), EvDetected, nil); a3.User != "alice" || !strings.Contains(a3.ActionsHint, "Ask alice") {
+		t.Errorf("hashing must be opt-in: %q %q", a3.User, a3.ActionsHint)
+	}
+}

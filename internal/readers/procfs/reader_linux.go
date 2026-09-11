@@ -22,9 +22,11 @@ func (r *Reader) Run(ctx context.Context, out chan<- event.Event) error {
 		return fmt.Errorf("procfs: %s not mounted: %w", root, err)
 	}
 
+	// The host list (and its DNS refresh) exists only for the connection
+	// scan; with NetEnabled off nothing here ever resolves a name.
 	resolver := r.opts.Resolver
 	var hl *HostList
-	if resolver == nil {
+	if resolver == nil && r.NetEnabled {
 		hl = NewHostList(r.pack)
 		hl.TTL = r.opts.ResolveTTL
 		resolver = hl
@@ -81,8 +83,12 @@ func (r *Reader) Run(ctx context.Context, out chan<- event.Event) error {
 
 	procTick := time.NewTicker(r.Interval)
 	defer procTick.Stop()
-	netTick := time.NewTicker(r.NetInterval)
-	defer netTick.Stop()
+	var netTick <-chan time.Time // nil channel: the case never fires
+	if r.NetEnabled {
+		nt := time.NewTicker(r.NetInterval)
+		defer nt.Stop()
+		netTick = nt.C
+	}
 
 	for {
 		select {
@@ -93,7 +99,7 @@ func (r *Reader) Run(ctx context.Context, out chan<- event.Event) error {
 			if !send(evs) {
 				return ctx.Err()
 			}
-		case <-netTick.C:
+		case <-netTick:
 			evs, prevNet = sc.ScanNet(prevNet)
 			if !send(evs) {
 				return ctx.Err()

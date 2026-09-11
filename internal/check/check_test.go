@@ -313,3 +313,48 @@ func TestFixFilesMatchDeploy(t *testing.T) {
 		t.Errorf("ParseSSHDConfig(SSHDDropIn) = %+v", s)
 	}
 }
+
+func TestParseOpenSSHVersion(t *testing.T) {
+	cases := []struct {
+		in           string
+		major, minor int
+		ok, atLeast  bool
+	}{
+		{"OpenSSH_8.9p1 Ubuntu-3ubuntu0.10, OpenSSL 3.0.2 15 Mar 2022", 8, 9, true, false},
+		{"OpenSSH_9.6p1 Ubuntu-3ubuntu13.5, OpenSSL 3.0.13 30 Jan 2024", 9, 6, true, false},
+		{"OpenSSH_9.8p1, OpenSSL 3.3.1 4 Jun 2024", 9, 8, true, true},
+		{"OpenSSH_9.9p2 Debian-2, OpenSSL 3.4.0", 9, 9, true, true},
+		{"OpenSSH_10.0p2 Ubuntu-1ubuntu1, OpenSSL 3.4.1", 10, 0, true, true},
+		{"OpenSSH_10.5", 10, 5, true, true},
+		{"sshd: unknown option -- V", 0, 0, false, false},
+	}
+	for _, c := range cases {
+		major, minor, ok := parseOpenSSHVersion(c.in)
+		if ok != c.ok || major != c.major || minor != c.minor {
+			t.Errorf("parseOpenSSHVersion(%q) = %d.%d %v, want %d.%d %v", c.in, major, minor, ok, c.major, c.minor, c.ok)
+		}
+		if ok && versionAtLeast(major, minor, 9, 8) != c.atLeast {
+			t.Errorf("%q: >= 9.8 = %v, want %v", c.in, !c.atLeast, c.atLeast)
+		}
+	}
+}
+
+// TestSSHDVersionTenIsNotLessThanNine runs the real check with a 10.x banner:
+// the old string comparison reported OpenSSH 10.0 as "< 9.8".
+func TestSSHDVersionTenIsNotLessThanNine(t *testing.T) {
+	exec := func(name string, args ...string) (string, string, error) {
+		if name == "sshd" && len(args) > 0 && args[0] == "-V" {
+			return "", "OpenSSH_10.0p2 Ubuntu-1ubuntu1, OpenSSL 3.4.1 11 Feb 2025\n", nil
+		}
+		return "", "", errors.New("not found")
+	}
+	r := &runner{opts: Options{Exec: exec}}
+	r.checkSSHDVersion()
+	if len(r.results) != 1 {
+		t.Fatalf("results %+v", r.results)
+	}
+	got := r.results[0]
+	if got.Status != StatusPass || !strings.Contains(got.Detail, ">= 9.8") || strings.Contains(got.Detail, "< 9.8") {
+		t.Errorf("sshd.version = %+v", got)
+	}
+}

@@ -263,6 +263,8 @@ func newPipeline(cfg config.Config, opts Options, pack *rules.Pack, log *slog.Lo
 		Thresholds:      cfg.Scoring.Thresholds,
 		Now:             p.clk.Now,
 		Logger:          log,
+		HashUsernames:   cfg.Privacy.HashUsernames,
+		HashSalt:        cfg.Privacy.HashSalt,
 	})
 	return p
 }
@@ -356,11 +358,8 @@ func (p *pipeline) registerSinks() {
 		}
 	}
 	if s.Webhook.Enabled {
-		format := s.Webhook.Format
-		if format == "json" || format == "" {
-			format = webhook.FormatGeneric
-		}
-		p.disp.Register(webhook.New(s.Webhook.URL, format, s.Webhook.Timeout.Duration(), s.Webhook.Headers),
+		// "json" is the config alias of the generic format; webhook.New maps it.
+		p.disp.Register(webhook.New(s.Webhook.URL, s.Webhook.Format, s.Webhook.Timeout.Duration(), s.Webhook.Headers),
 			score.ParseLevel(s.Webhook.MinLevel), 256)
 	}
 	if s.Email.Enabled {
@@ -636,18 +635,12 @@ func (p *pipeline) buildReaders(auditOffset int64, auditInode uint64) []readers.
 		list = append(list, p.audit)
 	}
 	if r.Procfs.Enabled {
-		opts := procfs.Options{
+		list = append(list, procfs.New(p.pack, procfs.Options{
 			Interval:    r.Procfs.Interval.Duration(),
 			NetInterval: r.Netconn.Interval.Duration(),
 			NoEnviron:   !r.Procfs.ReadEnviron,
-		}
-		if !r.Netconn.Enabled {
-			// The reader has no switch for the connection scan; a static empty
-			// resolver keeps it from doing DNS, so only literal-IP and CIDR
-			// rules can still match. Reported as a gap in the procfs reader.
-			opts.Resolver = procfs.MapResolver{}
-		}
-		list = append(list, procfs.New(p.pack, opts))
+			NoNet:       !r.Netconn.Enabled, // readers.netconn.enabled: false disables ScanNet and DNS
+		}))
 	}
 	return list
 }

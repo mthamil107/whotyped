@@ -149,3 +149,55 @@ func TestProfileInScorerMaxScoreAndProtection(t *testing.T) {
 		t.Fatalf("max_score: %+v", v)
 	}
 }
+
+// TestRequiredClauseAndPrefixSuppress covers the two allowlist semantics the
+// shipped vscode-remote profile relies on: a `required: true` clause that at
+// least one command must satisfy on top of the ratio (so git polling alone
+// never allowlists a session), and suppress entries that match by id prefix
+// ("style.pager_guard" covers "style.pager_guard.head").
+func TestRequiredClauseAndPrefixSuppress(t *testing.T) {
+	prof := rules.Profile{ID: "vscode", Match: rules.Match{MinMatchRatio: 0.5, AnyOf: []rules.MatchClause{
+		{Required: true, PathRegex: `/\.vscode-server/`},
+		{CmdRegex: `^git\s+(?:-c\s+\S+\s+)*(?:status|rev-parse)\b`},
+	}}, Suppress: []string{"rhythm", "style.pager_guard", "style.tool_wrapper"}, MaxScore: 30}
+	pack := &rules.Pack{Profiles: []rules.Profile{prof}}
+
+	gitOnly := mkTrack("alice", "10.0.0.5")
+	addCmds(gitOnly, 0, 5, "git -c core.quotepath=false status -z", "git rev-parse --show-toplevel", "git status")
+	if p, _ := MatchProfile(gitOnly, pack); p != nil {
+		t.Fatalf("git-only track matched %s; the required clause must anchor the profile", p.ID)
+	}
+
+	withServer := mkTrack("alice", "10.0.0.5")
+	addCmds(withServer, 0, 5,
+		"/home/alice/.vscode-server/bin/abc/node /home/alice/.vscode-server/bin/abc/out/server-main.js --start-server",
+		"git -c core.quotepath=false status -z", "git rev-parse --show-toplevel", "npm test")
+	p, ratio := MatchProfile(withServer, pack)
+	if p == nil || ratio < 0.74 || ratio > 0.76 {
+		t.Fatalf("expected match at ratio 0.75, got %v %v", p, ratio)
+	}
+
+	noisy := mkTrack("alice", "10.0.0.5")
+	addCmds(noisy, 0, 5, "/home/alice/.vscode-server/bin/abc/node x.js", "npm test", "make", "ls", "cat a")
+	if p, _ := MatchProfile(noisy, pack); p != nil {
+		t.Fatalf("required clause satisfied but ratio 0.2 still matched %s", p.ID)
+	}
+
+	in := []clues.Clue{
+		{ID: "style.pager_guard.head", Category: clues.CatStyle, Weight: 5},
+		{ID: "style.pager_guard.stderr_merge", Category: clues.CatStyle, Weight: 5},
+		{ID: "style.tool_wrapper", Category: clues.CatStyle, Weight: 8},
+		{ID: "style.tool_wrapperish", Category: clues.CatStyle, Weight: 8},
+		{ID: "style.heredoc", Category: clues.CatStyle, Weight: 10},
+		{ID: "rhythm.burst", Category: clues.CatRhythm, Weight: 20},
+	}
+	kept, sup := applyProfile(&prof, in)
+	if len(sup) != 4 || len(kept) != 2 {
+		t.Fatalf("prefix suppression: kept %v sup %v", kept, sup)
+	}
+	for _, c := range kept {
+		if c.ID != "style.heredoc" && c.ID != "style.tool_wrapperish" {
+			t.Errorf("unexpectedly suppressed by prefix: %s", c.ID)
+		}
+	}
+}
