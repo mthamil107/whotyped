@@ -1,0 +1,24 @@
+# binaries
+/whotyped
+/whotyped.exe
+/dist/
+/bin/
+*.test
+*.out
+coverage.*
+
+# local state and secrets
+*.local.json
+*.local.yaml
+*.env
+secrets*
+!*.example
+
+# editor / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# lab artefacts
+/lab/recordings/
