@@ -1,0 +1,7 @@
+-D
+-b 8192
+-f 1
+# Only 64-bit execve, keyed with -F key=
+-a exit,always -F arch=b64 -S execve -F key=exec64
+# watch rule, must not count
+-w /etc/passwd -p wa -k identity

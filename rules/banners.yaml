@@ -1,0 +1,130 @@
+# whotyped default rule pack: SSH client software-version banners.
+#
+# Matched against the client version string sshd logs at LogLevel DEBUG1
+# ("remote software version paramiko_3.4.0"). sshd drops the "SSH-2.0-"
+# prefix in that log line, so every regex makes the prefix optional and
+# also matches a raw banner captured elsewhere ("SSH-2.0-paramiko_3.4.0").
+#
+# kind: library     -> clue banner.library (+35). Programmatic SSH clients.
+#       automation  -> clue banner.automation (+15). Known non-interactive tools.
+#       human       -> clue banner.human (-10). Interactive terminal clients.
+# The first matching rule wins, in file order. Regexes are Go RE2.
+schema: whotyped.rules.v1
+version: "2026.09.11"
+
+banners:
+  - id: paramiko
+    regex: '^(?:SSH-2\.0-)?paramiko_'
+    kind: library
+    notes: >-
+      Python. Used by four of the surveyed MCP SSH servers
+      (mcp-ssh-toolkit-py, multi-ssh-mcp, remoteShell-mcp,
+      mcp-remote-access) but also by Ansible (paramiko transport), Fabric
+      and many ops scripts. Library alone must not alert: the scorer needs
+      a second category, and the ansible profile suppresses it.
+
+  - id: asyncssh
+    regex: '^(?:SSH-2\.0-)?AsyncSSH_'
+    kind: library
+    notes: Python asyncio library; python-ssh-mcp keeps a persistent sentinel shell over it.
+
+  - id: ssh2js
+    regex: '^(?:SSH-2\.0-)?ssh2js'
+    kind: library
+    notes: >-
+      Node `ssh2` (no underscore before the version). Used by ssh-mcp and
+      mcp-ssh-manager; the latter wraps commands as `timeout N sh -c '...'`,
+      so expect style.timeout and style.tool_wrapper alongside it.
+
+  - id: go
+    regex: '^(?:SSH-2\.0-)?Go$'
+    kind: library
+    notes: >-
+      golang.org/x/crypto/ssh sends "SSH-2.0-Go" with no version. Shared by
+      go-ssh-mcp, Terraform provisioners, Teleport, and countless Go tools;
+      the terraform-provisioner profile suppresses it when appropriate.
+
+  - id: russh
+    regex: '^(?:SSH-2\.0-)?russh_'
+    kind: library
+    notes: Rust library; mcp-secure-shell (banner UNVERIFIED, may be libssh2 instead).
+
+  - id: libssh
+    regex: '^(?:SSH-2\.0-)?libssh_'
+    kind: library
+    notes: C library (libssh.org). Also embedded in some interactive tools; weak on its own.
+
+  - id: libssh2
+    regex: '^(?:SSH-2\.0-)?libssh2_'
+    kind: library
+    notes: C library (libssh2.org); bindings exist for Rust, PHP, Python (ssh2-python).
+
+  - id: jsch
+    regex: '(?i)^(?:SSH-2\.0-)?JSCH[_-]'
+    kind: library
+    notes: >-
+      Java. Modern forks send "SSH-2.0-JSCH_0.2.x"; the original 0.1.55
+      sent "SSH-2.0-JSCH-0.1.55" (dash). Both spellings covered,
+      case-insensitively. Widely used by Jenkins and build tooling.
+
+  - id: sshj
+    regex: '(?i)^(?:SSH-2\.0-)?SSHJ_'
+    kind: library
+    notes: Java library (hierynomus/sshj).
+
+  - id: mina-sshd
+    regex: '(?i)^(?:SSH-2\.0-)?APACHE-SSHD-'
+    kind: automation
+    notes: >-
+      UNVERIFIED banner (not in the research doc): Apache MINA SSHD is
+      believed to identify as "SSH-2.0-APACHE-SSHD-<version>". Used by
+      Java automation (Jenkins agents, Gerrit tooling).
+
+  - id: trilead
+    regex: '(?i)^(?:SSH-2\.0-)?TrileadSSH2Java_'
+    kind: automation
+    notes: UNVERIFIED banner (not in the research doc); the Jenkins SSH plugins used the Trilead fork.
+
+  - id: dropbear
+    regex: '^(?:SSH-2\.0-)?dropbear_'
+    kind: human
+    notes: >-
+      Dropbear's dbclient, typical of embedded and BusyBox systems and of
+      people sshing from routers or Android terminals. Treated as a human
+      terminal client, not automation.
+
+  - id: openssh
+    regex: '^(?:SSH-2\.0-)?OpenSSH_'
+    kind: human
+    notes: >-
+      The ordinary `ssh` client. Also what Ansible, rsync, git, scp and a
+      laptop AI agent's shell tool use, so the negative weight is small and
+      the other clue families decide.
+
+  - id: putty
+    regex: '^(?:SSH-2\.0-)?PuTTY_'
+    kind: human
+    notes: PuTTY and plink send "SSH-2.0-PuTTY_Release_0.xx"; plink can be scripted.
+
+  - id: winscp
+    regex: '(?i)^(?:SSH-2\.0-)?WinSCP'
+    kind: human
+    notes: UNVERIFIED exact format; WinSCP's PuTTY-derived core is believed to send "SSH-2.0-WinSCP_release_x.y".
+
+  - id: mobaxterm
+    regex: '(?i)^(?:SSH-2\.0-)?MobaXterm'
+    kind: human
+    notes: UNVERIFIED exact format (not in the research doc); lenient prefix match.
+
+  - id: termius
+    regex: '(?i)^(?:SSH-2\.0-)?Termius'
+    kind: human
+    notes: UNVERIFIED exact format (not in the research doc); lenient prefix match.
+
+  - id: bitvise
+    regex: '(?i)(?:Bitvise|FlowSsh)'
+    kind: human
+    notes: >-
+      UNVERIFIED exact format; Bitvise SSH Client is believed to send a
+      banner containing "FlowSsh: Bitvise SSH Client", so this is a
+      substring match rather than a prefix match.

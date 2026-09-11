@@ -1,0 +1,88 @@
+# whotyped default rule pack: command-text style patterns.
+#
+# Each style regex (Go RE2) is applied to the command text of one exec
+# channel or execve record. Weights follow ARCHITECTURE.md section 5: the
+# style category is capped at 30 and the `pager_guard` group at 15 in the
+# scorer. Evidence emitted for a match must be the matched fragment plus
+# argv0 and command length, never the full command line.
+#
+# Gaps the scorer must fill (the Style schema has no field for them):
+#   - style.compound is specified as "cd X && ... with >=2 operators and
+#     length > 80"; RE2 cannot express the length gate together with the
+#     structure, so the regex checks structure only and the clue engine
+#     applies the length threshold.
+#   - the pager_guard group cap of 15 is not encoded here.
+schema: whotyped.rules.v1
+version: "2026.09.11"
+
+styles:
+  - id: style.heredoc
+    regex: '(?:^|[^<])<<-?\s*["'']?[A-Za-z_][A-Za-z0-9_]*["'']?'
+    weight: 10
+    notes: >-
+      A here-document in a single-line command. Interactive humans type
+      multi-line heredocs at a prompt, which never arrive as one exec
+      channel; agents embed them to pass commit messages and file bodies
+      through one `bash -c`. Here-strings (<<<) are excluded.
+
+  - id: style.compound
+    regex: '\bcd\s+[^\s;&|]+\s*(?:&&|;)\s*.*(?:&&|\|\||;|\|)'
+    weight: 10
+    notes: >-
+      `cd <dir> &&` followed by at least one more chain operator. Tool
+      wrappers change directory per command because each call starts a
+      fresh shell. Length gate (> 80 chars) is applied by the clue engine.
+
+  - id: style.tool_wrapper
+    regex: '(?:^|[\s/;&|(])(?:bash|sh|zsh|dash|ksh)\s+(?:-[A-Za-z]+\s+)*-[A-Za-z]*c[A-Za-z]*(?:\s|$)'
+    weight: 8
+    notes: >-
+      `bash -lc '...'`, `sh -c '...'`, `/bin/bash -l -c` at any position
+      (including after `timeout N`). Shell tools of Claude Code, Gemini CLI
+      and MCP SSH servers spawn commands this way; humans rarely type it.
+
+  - id: style.nopager
+    regex: '--no-pager\b|\bgit\s+-P\b|(?:^|\s)(?:GIT_)?PAGER=(?:cat|""|'''')(?:\s|$)'
+    weight: 5
+    group: pager_guard
+    notes: Pager defeats such as `git --no-pager log`, `git -P`, `PAGER=cat`, `GIT_PAGER=cat`; a non-TTY consumer protecting itself from `less`.
+
+  - id: style.head
+    regex: '\|\s*head\s+-(?:n\s*)?\d+'
+    weight: 5
+    group: pager_guard
+    notes: '`| head -n 50` / `| head -20`: output truncation to fit a context window. A bare `| head` does not count.'
+
+  - id: style.tail
+    regex: '\|\s*tail\s+-(?:n\s*\+?)?\d+'
+    weight: 5
+    group: pager_guard
+    notes: '`| tail -n 100` / `| tail -50` / `| tail -n +5`, same reason as style.head.'
+
+  - id: style.sed_range
+    regex: '\bsed\s+-n\s+["'']?\d+,(?:\d+|\$)p'
+    weight: 5
+    group: pager_guard
+    notes: '`sed -n ''120,160p'' file`: reading a file window by line numbers, the shape of a read-file tool implemented over a shell.'
+
+  - id: style.stderr_merge
+    regex: '2>&1'
+    weight: 5
+    group: pager_guard
+    notes: Merging stderr into stdout so a single stream can be captured. Common in scripts too, hence the low weight and shared cap.
+
+  - id: style.timeout
+    regex: '(?:^|[\s;&|(])timeout\s+(?:-\S+\s+)*\d+(?:\.\d+)?[smhd]?\s+\S'
+    weight: 5
+    group: pager_guard
+    notes: '`timeout 30 cmd`, `timeout -k 5 120s sh -c`: a caller guarding against a hung command. mcp-ssh-manager wraps every command this way.'
+
+  - id: style.abs_paths
+    regex: '(?:^|[\s=:''"])/[A-Za-z0-9_.-]+/\S*.*(?:^|[\s=:''"])/[A-Za-z0-9_.-]+/\S*'
+    weight: 5
+    notes: >-
+      Two or more absolute paths in one command. Agents are instructed to
+      use absolute paths and avoid `cd`; humans rely on the working
+      directory. A single absolute path (`cat /etc/hosts`) is too common
+      to count. URLs (`https://...`) do not match because `//` breaks the
+      path pattern.

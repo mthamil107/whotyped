@@ -1,0 +1,192 @@
+# whotyped default allowlist profiles.
+#
+# Profiles are defined here and switched on per host in config
+# (allowlist.profiles_enabled). A profile matches a track when all of the
+# populated `match` fields agree: users / src_cidrs / fingerprints (empty =
+# any) and at least `min_match_ratio` of the track's exec channels satisfy
+# one of the `any_of` clauses. Matching profiles zero the listed clue ids
+# or whole categories and optionally cap the score. Profiles can never
+# suppress process, flags or identity clues (proc.*, env.ai_agent): an AI
+# agent that runs inside an allowlisted automation is still an AI agent.
+#
+# Every profile ships with empty users/src_cidrs. Narrow them in an
+# override file (rules.dirs) once you know where the automation comes
+# from; a profile that matches any source is a hole, not a policy.
+schema: whotyped.allowlist.v1
+version: "2026.09.11"
+
+profiles:
+  - id: ansible
+    description: >-
+      Ansible control node running modules on this host. Module runs look
+      like `/bin/sh -c '/usr/bin/python3 ~/.ansible/tmp/ansible-tmp-<ts>/
+      AnsiballZ_<module>.py && sleep 0'` in fast bursts without a PTY, so
+      they trip rhythm, pty and style. Ansible speaks OpenSSH (default) or
+      paramiko; the paramiko banner is suppressed here because it would
+      otherwise leave a permanent +35. Restrict src_cidrs to the control
+      node. A cursor-agent or claude process launched by a playbook is
+      still reported.
+    match:
+      min_match_ratio: 0.6
+      any_of:
+        - cmd_regex: '/\.ansible/tmp/ansible-tmp-'
+        - cmd_regex: 'AnsiballZ_[A-Za-z0-9_]+\.py'
+        - path_regex: '/\.ansible/'
+        - cmd_regex: '(?:^|\s)echo\s+~[a-z_][a-z0-9_-]*\s*&&\s*sleep\s+0'
+    suppress:
+      - rhythm
+      - pty.none
+      - style
+      - banner.library
+      - banner.automation
+    max_score: 20
+
+  - id: vscode-remote
+    description: >-
+      VS Code Remote-SSH, Cursor Remote-SSH and code-server. The remote
+      server (`node .../server-main.js --start-server` under
+      ~/.vscode-server, ~/.cursor-server or a code-server install) spawns
+      shells, git and file watchers in bursts without a PTY. Suppresses the
+      rhythm/pty/wrapper noise of the IDE itself. It does NOT suppress
+      cursor-agent, claude, or any other agent process started from the
+      IDE terminal: process, flags and identity clues always stand, and the
+      style patterns that agents produce (heredoc, compound) are left in.
+    match:
+      min_match_ratio: 0.5
+      any_of:
+        - path_regex: '/\.(?:vscode-server|vscode-server-insiders|cursor-server)/'
+        - cmd_regex: '/\.(?:vscode-server|vscode-server-insiders|cursor-server)/'
+        - cmd_regex: 'server-main\.js\s+--start-server'
+        - cmd_regex: '(?:^|/)code-server(?:\s|$)'
+        - argv0_regex: '^(?:.*/)?(?:cursor-server|code-server)$'
+    suppress:
+      - rhythm
+      - pty.none
+      - style.tool_wrapper
+      - style.abs_paths
+      - style.pager_guard
+
+  - id: github-runner
+    description: >-
+      Self-hosted GitHub Actions runner (actions-runner install: run.sh,
+      runsvc.sh, Runner.Listener, Runner.Worker) executing job steps under
+      _work/. Steps are scripted bursts with no PTY and script-like style.
+      Applies mainly to local_agent mode; a runner is not an SSH session.
+      Agent processes launched by a workflow step remain reported.
+    match:
+      min_match_ratio: 0.6
+      any_of:
+        - path_regex: '/actions-runner/|/_work/_temp/'
+        - cmd_regex: '/actions-runner/|/_work/_temp/'
+        - argv0_regex: '^(?:.*/)?(?:Runner\.Worker|Runner\.Listener|runsvc\.sh|run\.sh)$'
+    suppress:
+      - rhythm
+      - pty.none
+      - style
+    max_score: 30
+
+  - id: gitlab-runner
+    description: >-
+      GitLab Runner with the shell or ssh executor. Jobs run as
+      `gitlab-runner` (argv0 gitlab-runner / gitlab-runner-helper) under a
+      builds directory, again as scripted no-PTY bursts. Agent processes
+      launched by a job remain reported.
+    match:
+      min_match_ratio: 0.6
+      any_of:
+        - argv0_regex: '^(?:.*/)?gitlab-runner(?:-helper)?$'
+        - cmd_regex: '(?:^|/)gitlab-runner(?:-helper)?(?:\s|$)'
+        - path_regex: '/builds/[^/]+/[^/]+/'
+        - cmd_regex: '/builds/[^/]+/[^/]+/'
+    suppress:
+      - rhythm
+      - pty.none
+      - style
+    max_score: 30
+
+  - id: rsync-backup
+    description: >-
+      Pull or push backups over rsync. The remote side is always
+      `rsync --server ...`, a single long-lived exec channel per run;
+      scheduled backups make it regular. Only rsync commands match, so a
+      session that mixes in other commands loses the profile.
+    match:
+      min_match_ratio: 0.9
+      any_of:
+        - cmd_regex: '^(?:\S*/)?rsync\s+--server\b'
+        - argv0_regex: '^(?:.*/)?rsync$'
+    suppress:
+      - rhythm
+      - pty.none
+      - style
+
+  - id: sftp-only
+    description: >-
+      Accounts that only ever use the SFTP subsystem (internal-sftp or
+      sftp-server). File transfer clients open many short no-PTY sessions.
+      Pair with a ForceCommand or Match block in sshd_config for the same
+      users so a shell from that account still scores normally.
+    match:
+      min_match_ratio: 0.9
+      any_of:
+        - cmd_regex: '(?:^|/)(?:sftp-server|internal-sftp)(?:\s|$)'
+        - argv0_regex: '^(?:.*/)?(?:sftp-server|internal-sftp)$'
+    suppress:
+      - rhythm
+      - pty.none
+
+  - id: borgbackup
+    description: >-
+      BorgBackup repository hosting. Clients run `borg serve` on this host
+      over SSH (often via `command="borg serve ..."` in authorized_keys),
+      one no-PTY session per backup.
+    match:
+      min_match_ratio: 0.9
+      any_of:
+        - cmd_regex: '(?:^|/)borg\s+serve\b'
+        - argv0_regex: '^(?:.*/)?borg$'
+    suppress:
+      - rhythm
+      - pty.none
+      - style
+
+  - id: restic
+    description: >-
+      restic backups whose SFTP backend runs sftp-server here, or a
+      rest-server / `rclone serve restic` process started over SSH. The
+      restic client itself is not an SSH client; what this host sees is the
+      backend. Restrict to the backup account with `users`.
+    match:
+      min_match_ratio: 0.9
+      any_of:
+        - cmd_regex: '(?:^|/)(?:restic|rest-server)(?:\s|$)'
+        - cmd_regex: '(?:^|/)rclone\s+serve\s+restic\b'
+        - cmd_regex: '(?:^|/)sftp-server(?:\s|$)'
+        - argv0_regex: '^(?:.*/)?(?:restic|rest-server|rclone|sftp-server)$'
+    suppress:
+      - rhythm
+      - pty.none
+      - style
+
+  - id: terraform-provisioner
+    description: >-
+      Terraform remote-exec / file provisioners. Terraform's SSH client is
+      Go (banner "SSH-2.0-Go", the same banner as go-ssh-mcp, hence the
+      +35 library weight it earns by default), it uploads scripts to /tmp
+      and runs them, and `sudo -S` with a piped password is a common shape
+      in provisioner scripts. Enable only on hosts that Terraform actually
+      provisions, and pin src_cidrs to the runner; otherwise this profile
+      hides every Go-based SSH tool.
+    match:
+      min_match_ratio: 0.5
+      any_of:
+        - banner_regex: '^(?:SSH-2\.0-)?Go$'
+        - cmd_regex: '^(?:\S*/)?sudo\s+-S\b'
+        - cmd_regex: '/tmp/terraform_[0-9]+\.sh'
+        - cmd_regex: '(?:^|\s)chmod\s+(?:\+x|0?7[0-7]{2})\s+/tmp/terraform_'
+    suppress:
+      - banner.library
+      - rhythm
+      - pty.none
+      - style
+    max_score: 30

@@ -1,0 +1,6 @@
+{
+  "score_min": 0,
+  "score_max": 30,
+  "class": "human",
+  "notes": "VS Code Remote-SSH: install script exec channel, then regular git polling from the server. Profile 'vscode-remote' suppresses rhythm/style/pty.none, max 30."
+}

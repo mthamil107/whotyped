@@ -1,0 +1,55 @@
+type=USER_START msg=audit(1757601000.000:5000): pid=4200 uid=0 auid=1000 ses=7 subj=unconfined msg='op=PAM:session_open grantors=pam_loginuid,pam_keyinit,pam_limits,pam_systemd,pam_unix acct="alice" exe="/usr/sbin/sshd" hostname=203.0.113.5 addr=203.0.113.5 terminal=ssh res=success'
+type=SYSCALL msg=audit(1757601000.000:5001): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4200 pid=4300 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601000.000:5001): argc=3 a0="bash" a1="-lc" a2=6364202F7372762F6170702026262067697420737461747573202D2D6E6F2D706167657220323E2631207C2068656164202D6E203530
+type=CWD msg=audit(1757601000.000:5001): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601000.000:5001): proctitle=62617368002D6C63006364202F7372762F6170702026262067697420737461747573202D2D6E6F2D706167657220323E2631207C2068656164202D6E203530
+type=SYSCALL msg=audit(1757601000.610:5002): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4201 pid=4303 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601000.610:5002): argc=3 a0="bash" a1="-lc" a2=6364202F7372762F61707020262620676974206C6F67202D2D6F6E656C696E65202D6E203230202D2D6E6F2D706167657220323E2631
+type=CWD msg=audit(1757601000.610:5002): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601000.610:5002): proctitle=62617368002D6C63006364202F7372762F61707020262620676974206C6F67202D2D6F6E656C696E65202D6E203230202D2D6E6F2D706167657220323E2631
+type=SYSCALL msg=audit(1757601001.050:5003): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4202 pid=4306 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601001.050:5003): argc=3 a0="bash" a1="-lc" a2=636174202F7372762F6170702F636F6E6669672F6170702E79616D6C20323E2631207C2068656164202D6E20313030
+type=CWD msg=audit(1757601001.050:5003): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601001.050:5003): proctitle=62617368002D6C6300636174202F7372762F6170702F636F6E6669672F6170702E79616D6C20323E2631207C2068656164202D6E20313030
+type=USER_START msg=audit(1757601001.100:5004): pid=900 uid=0 auid=0 ses=9 subj=unconfined msg='op=PAM:session_open grantors=pam_loginuid,pam_limits acct="root" exe="/usr/sbin/cron" hostname=? addr=? terminal=cron res=success'
+type=SYSCALL msg=audit(1757601001.920:5005): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4200 pid=4309 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601001.920:5005): argc=3 a0="bash" a1="-lc" a2=6364202F7372762F6170702026262067726570202D726E202274696D656F757422207372632F20323E2631207C2068656164202D6E203430
+type=CWD msg=audit(1757601001.920:5005): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601001.920:5005): proctitle=62617368002D6C63006364202F7372762F6170702026262067726570202D726E202274696D656F757422207372632F20323E2631207C2068656164202D6E203430
+type=SYSCALL msg=audit(1757601002.440:5006): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4201 pid=4312 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601002.440:5006): argc=3 a0="bash" a1="-lc" a2=736564202D6E2027312C38307027202F7372762F6170702F7372632F7365727665722E7079
+type=CWD msg=audit(1757601002.440:5006): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601002.440:5006): proctitle=62617368002D6C6300736564202D6E2027312C38307027202F7372762F6170702F7372632F7365727665722E7079
+type=SYSCALL msg=audit(1757601003.170:5007): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4202 pid=4315 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601003.170:5007): argc=3 a0="bash" a1="-lc" a2=6364202F7372762F6170702026262074696D656F757420363020707974686F6E33202D6D207079746573742074657374732F746573745F6170692E7079202D78202D7120323E2631207C207461696C202D6E203330
+type=CWD msg=audit(1757601003.170:5007): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601003.170:5007): proctitle=62617368002D6C63006364202F7372762F6170702026262074696D656F757420363020707974686F6E33202D6D207079746573742074657374732F746573745F6170692E7079202D78202D7120323E2631207C207461696C202D6E203330
+type=SYSCALL msg=audit(1757601003.270:5008): arch=c000003e syscall=257 success=yes exit=3 a0=ffffff9c a1=7ffd1a2b a2=80000 a3=0 items=1 ppid=1 pid=812 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="systemd-journal" exe="/usr/lib/systemd/systemd-journald" subj=unconfined key="config"
+type=PATH msg=audit(1757601003.270:5008): item=0 name="/etc/machine-id" inode=42 dev=fd:00 mode=0100444 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PROCTITLE msg=audit(1757601003.270:5008): proctitle="/usr/lib/systemd/systemd-journald"
+type=SYSCALL msg=audit(1757601004.070:5009): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4200 pid=4318 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601004.070:5009): argc=3 a0="bash" a1="-lc" a2=73797374656D63746C2073746174757320617070202D2D6E6F2D706167657220323E2631207C2068656164202D6E203230
+type=CWD msg=audit(1757601004.070:5009): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601004.070:5009): proctitle=62617368002D6C630073797374656D63746C2073746174757320617070202D2D6E6F2D706167657220323E2631207C2068656164202D6E203230
+type=SYSCALL msg=audit(1757601004.550:5010): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4201 pid=4321 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601004.550:5010): argc=3 a0="bash" a1="-lc" a2=6A6F75726E616C63746C202D7520617070202D2D73696E636520223130206D696E2061676F22202D2D6E6F2D706167657220323E2631207C207461696C202D6E203530
+type=CWD msg=audit(1757601004.550:5010): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601004.550:5010): proctitle=62617368002D6C63006A6F75726E616C63746C202D7520617070202D2D73696E636520223130206D696E2061676F22202D2D6E6F2D706167657220323E2631207C207461696C202D6E203530
+type=SYSCALL msg=audit(1757601005.210:5011): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4202 pid=4324 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601005.210:5011): argc=3 a0="bash" a1="-lc" a2=636174203C3C27454F4627203E202F746D702F70617463682E70790A696D706F72742072650A7072696E7428276F6B27290A454F460A
+type=CWD msg=audit(1757601005.210:5011): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601005.210:5011): proctitle=62617368002D6C6300636174203C3C27454F4627203E202F746D702F70617463682E70790A696D706F72742072650A7072696E7428276F6B27290A454F460A
+type=CRED_DISP msg=audit(1757601005.230:5012): pid=2201 uid=1001 auid=1001 ses=11 subj=unconfined msg='op=PAM:setcred grantors=pam_env,pam_unix acct="root" exe="/usr/bin/sudo" hostname=? addr=? terminal=/dev/pts/2 res=success'
+type=SYSCALL msg=audit(1757601005.620:5013): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4200 pid=4327 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601005.620:5013): argc=3 a0="bash" a1="-lc" a2=6364202F7372762F617070202626206769742064696666202D2D6E6F2D706167657220323E2631207C2068656164202D6E20323030
+type=CWD msg=audit(1757601005.620:5013): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601005.620:5013): proctitle=62617368002D6C63006364202F7372762F617070202626206769742064696666202D2D6E6F2D706167657220323E2631207C2068656164202D6E20323030
+type=SYSCALL msg=audit(1757601006.410:5014): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4201 pid=4330 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601006.410:5014): argc=3 a0="bash" a1="-lc" a2=6C73202D6C61202F7372762F6170702F73726320323E2631
+type=CWD msg=audit(1757601006.410:5014): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601006.410:5014): proctitle=62617368002D6C63006C73202D6C61202F7372762F6170702F73726320323E2631
+type=SYSCALL msg=audit(1757601006.960:5015): arch=c000003e syscall=59 success=yes exit=0 a0=55d0c1000 a1=55d0c1010 a2=55d0c1020 a3=55d0c1030 items=2 ppid=4202 pid=4333 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm="bash" exe="/usr/bin/bash" subj=unconfined key="whotyped"
+type=EXECVE msg=audit(1757601006.960:5015): argc=3 a0="bash" a1="-lc" a2=6364202F7372762F6170702026262074696D656F75742031323020707974686F6E33202D6D20707974657374202D7120323E2631207C207461696C202D6E203230
+type=CWD msg=audit(1757601006.960:5015): cwd="/home/alice"
+type=PROCTITLE msg=audit(1757601006.960:5015): proctitle=62617368002D6C63006364202F7372762F6170702026262074696D656F75742031323020707974686F6E33202D6D20707974657374202D7120323E2631207C207461696C202D6E203230
+type=USER_END msg=audit(1757601008.160:5016): pid=4200 uid=0 auid=1000 ses=7 subj=unconfined msg='op=PAM:session_close grantors=pam_loginuid,pam_keyinit,pam_limits,pam_systemd,pam_unix acct="alice" exe="/usr/sbin/sshd" hostname=203.0.113.5 addr=203.0.113.5 terminal=ssh res=success'

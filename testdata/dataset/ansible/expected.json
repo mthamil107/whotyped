@@ -1,0 +1,6 @@
+{
+  "score_min": 0,
+  "score_max": 20,
+  "class": "human",
+  "notes": "Ansible over ControlPersist: one Accepted, 20 exec channels, AnsiballZ commands. Profile 'ansible' suppresses banner/rhythm/pty/style."
+}

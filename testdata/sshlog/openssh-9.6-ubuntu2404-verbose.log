@@ -1,0 +1,35 @@
+2026-09-11T13:52:10.102331+00:00 build-07 sshd[2210]: Connection from 10.0.0.5 port 60122 on 10.0.0.7 port 22
+2026-09-11T13:52:10.412345+00:00 build-07 sshd[2210]: Accepted publickey for alice from 10.0.0.5 port 60122 ssh2: ED25519 SHA256:Qm3kR9pL2vX7wA1sD4fG6hJ8kL0zX2cV4bN6mQ8wE0r
+2026-09-11T13:52:10.415002+00:00 build-07 sshd[2210]: pam_unix(sshd:session): session opened for user alice(uid=1000) by (uid=0)
+2026-09-11T13:52:10.420117+00:00 build-07 sshd[2210]: User child is on pid 2216
+2026-09-11T13:52:10.451900+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:10.902114+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:11.311870+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:11.700421+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:12.201004+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:12.788009+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:13.401776+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:13.905312+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:14.300880+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:14.611123+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 1
+2026-09-11T13:52:14.955601+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:15.102340+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 1
+2026-09-11T13:52:15.512000+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:15.990781+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:16.650003+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:17.100224+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:17.601558+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:18.211840+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:18.999012+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:19.402210+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:19.850761+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:20.300114+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:20.755921+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:21.198800+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:21.900431+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:22.388120+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:23.011009+00:00 build-07 sshd[2216]: Starting session: command for alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:23.470655+00:00 build-07 sshd[2216]: Close session: user alice from 10.0.0.5 port 60122 id 0
+2026-09-11T13:52:24.120988+00:00 build-07 sshd[2216]: Received disconnect from 10.0.0.5 port 60122:11: disconnected by user
+2026-09-11T13:52:24.121300+00:00 build-07 sshd[2216]: Disconnected from user alice 10.0.0.5 port 60122
+2026-09-11T13:52:24.125877+00:00 build-07 sshd[2210]: pam_unix(sshd:session): session closed for user alice

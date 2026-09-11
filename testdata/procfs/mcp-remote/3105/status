@@ -1,0 +1,13 @@
+Name:	bash
+Umask:	0022
+State:	S (sleeping)
+Tgid:	3105
+Ngid:	0
+Pid:	3105
+PPid:	3100
+TracerPid:	0
+Uid:	1001	1001	1001	1001
+Gid:	1001	1001	1001	1001
+FDSize:	64
+Groups:	1001
+Threads:	1

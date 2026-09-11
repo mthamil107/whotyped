@@ -1,0 +1,13 @@
+Name:	vim
+Umask:	0022
+State:	S (sleeping)
+Tgid:	2215
+Ngid:	0
+Pid:	2215
+PPid:	2210
+TracerPid:	0
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+FDSize:	64
+Groups:	1000
+Threads:	1

@@ -1,0 +1,20 @@
+Sep 11 14:03:19 web-03 sshd[1101]: Server listening on 0.0.0.0 port 22.
+Sep 11 14:03:19 web-03 sshd[1101]: Server listening on :: port 22.
+Sep 11 14:03:20 web-03 sshd[1234]: Connection from 203.0.113.5 port 51234 on 10.0.0.3 port 22
+Sep 11 14:03:22 web-03 sshd[1234]: Accepted publickey for alice from 203.0.113.5 port 51234 ssh2: ED25519 SHA256:Q7kXf1sN0d3n4uB6p9x1Y2zA3bC4dE5fG6hI7jK8lM0
+Sep 11 14:03:22 web-03 sshd[1234]: pam_unix(sshd:session): session opened for user alice(uid=1000) by (uid=0)
+Sep 11 14:03:22 web-03 systemd-logind[801]: New session 42 of user alice.
+Sep 11 14:03:22 web-03 sshd[1234]: User child is on pid 1240
+Sep 11 14:03:22 web-03 sshd[1240]: Starting session: shell on pts/0 for alice from 203.0.113.5 port 51234 id 0
+Sep 11 14:05:02 web-03 sshd[1301]: Invalid user admin from 198.51.100.9 port 40000
+Sep 11 14:05:04 web-03 sshd[1301]: Failed password for invalid user admin from 198.51.100.9 port 40000 ssh2
+Sep 11 14:05:05 web-03 sshd[1301]: Connection closed by invalid user admin 198.51.100.9 port 40000 [preauth]
+Sep 11 14:06:10 web-03 sshd[1310]: Failed password for root from 198.51.100.9 port 40012 ssh2
+Sep 11 14:06:12 web-03 sshd[1310]: Received disconnect from 198.51.100.9 port 40012:11: Bye Bye [preauth]
+Sep 11 14:06:12 web-03 sshd[1310]: Disconnected from authenticating user root 198.51.100.9 port 40012 [preauth]
+Sep 11 14:07:30 web-03 sshd[1320]: Connection closed by 198.51.100.44 port 55120 [preauth]
+Sep 11 14:09:41 web-03 sshd[1240]: Close session: user alice from 203.0.113.5 port 51234 id 0
+Sep 11 14:09:41 web-03 sshd[1240]: Received disconnect from 203.0.113.5 port 51234:11: disconnected by user
+Sep 11 14:09:41 web-03 sshd[1240]: Disconnected from user alice 203.0.113.5 port 51234
+Sep 11 14:09:41 web-03 sshd[1234]: pam_unix(sshd:session): session closed for user alice
+Sep 11 14:09:41 web-03 systemd-logind[801]: Session 42 logged out. Waiting for processes to exit.

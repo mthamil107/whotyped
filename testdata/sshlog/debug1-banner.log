@@ -1,0 +1,26 @@
+Sep 11 15:20:00 mcp-01 sshd[4001]: debug1: Forked child 4010.
+Sep 11 15:20:00 mcp-01 sshd[4010]: Connection from 10.0.0.9 port 44010 on 10.0.0.12 port 22 rdomain ""
+Sep 11 15:20:00 mcp-01 sshd[4010]: debug1: Local version string SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13
+Sep 11 15:20:00 mcp-01 sshd[4010]: debug1: Remote protocol version 2.0, remote software version paramiko_3.4.0
+Sep 11 15:20:00 mcp-01 sshd[4010]: debug1: compat_banner: no match: paramiko_3.4.0
+Sep 11 15:20:00 mcp-01 sshd[4010]: debug1: kex: algorithm: curve25519-sha256@libssh.org [preauth]
+Sep 11 15:20:00 mcp-01 sshd[4010]: debug1: userauth-request for user svc-mcp service ssh-connection method publickey [preauth]
+Sep 11 15:20:01 mcp-01 sshd[4010]: Accepted publickey for svc-mcp from 10.0.0.9 port 44010 ssh2: ED25519 SHA256:mCp1aB2cD3eF4gH5iJ6kL7mN8oP9qR0sT1uV2wX3yZ4
+Sep 11 15:20:01 mcp-01 sshd[4010]: pam_unix(sshd:session): session opened for user svc-mcp(uid=1500) by (uid=0)
+Sep 11 15:20:01 mcp-01 sshd[4010]: User child is on pid 4015
+Sep 11 15:20:01 mcp-01 sshd[4015]: debug1: server_input_channel_req: channel 0 request env reply 0
+Sep 11 15:20:01 mcp-01 sshd[4015]: debug2: Setting env 0: AI_AGENT=claude-code
+Sep 11 15:20:01 mcp-01 sshd[4015]: debug2: Setting env 1: LC_ALL=C.UTF-8
+Sep 11 15:20:01 mcp-01 sshd[4015]: debug2: Ignoring env request FOO_BAR: disallowed name
+Sep 11 15:20:01 mcp-01 sshd[4015]: debug1: server_input_channel_req: channel 0 request exec reply 1
+Sep 11 15:20:01 mcp-01 sshd[4015]: Starting session: command for svc-mcp from 10.0.0.9 port 44010 id 0
+Sep 11 15:20:02 mcp-01 sshd[4015]: Close session: user svc-mcp from 10.0.0.9 port 44010 id 0
+Sep 11 15:20:02 mcp-01 sshd[4015]: Received disconnect from 10.0.0.9 port 44010:11:
+Sep 11 15:20:02 mcp-01 sshd[4015]: Disconnected from user svc-mcp 10.0.0.9 port 44010
+Sep 11 15:20:02 mcp-01 sshd[4010]: pam_unix(sshd:session): session closed for user svc-mcp
+Sep 11 15:25:00 mcp-01 sshd[4101]: Client protocol version 2.0; client software version OpenSSH_7.4
+Sep 11 15:25:00 mcp-01 sshd[4101]: debug1: match: OpenSSH_7.4 pat OpenSSH_7.4* compat 0x04000002
+Sep 11 15:25:01 mcp-01 sshd[4101]: Accepted password for carol from 10.0.0.30 port 50123 ssh2
+Sep 11 15:25:01 mcp-01 sshd[4101]: pam_unix(sshd:session): session opened for user carol(uid=1003) by (uid=0)
+Sep 11 15:25:01 mcp-01 sshd[4101]: User child is on pid 4108
+Sep 11 15:25:01 mcp-01 sshd[4108]: Starting session: shell on pts/2 for carol from 10.0.0.30 port 50123 id 0

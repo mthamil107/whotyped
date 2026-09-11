@@ -1,0 +1,374 @@
+# whotyped default rule pack: AI agents and their host fingerprints.
+#
+# Source of truth: docs/research/02-agent-fingerprints.md (2026-09-11).
+# Every fact below is source-verified unless the entry's `notes` say UNVERIFIED.
+# Semantics (see internal/rules/types.go):
+#   process_names  matched against comm or basename(exe)
+#   argv_contains  substring of the joined argv
+#   env_vars       NAME (presence) or NAME=value (exact) in the process environ
+#   env_ai_agent   AI_AGENT values that declare this agent (case-insensitive,
+#                  an optional "@version" suffix is stripped before matching)
+#   skip_flags     argv fragments that disable the agent's own safety prompts
+#   api_hosts      destinations this agent talks to (see also apihosts.yaml)
+#   tool_wrappers  how the agent's shell tool spawns commands
+# Override any entry by id from a file in rules.dirs; `disabled: true` removes it.
+schema: whotyped.rules.v1
+version: "2026.09.11"
+
+agents:
+  - id: claude-code
+    display: Claude Code
+    vendor: Anthropic
+    process_names: [claude]
+    argv_contains:
+      - "@anthropic-ai/claude-code"
+      - "claude daemon"
+    env_vars:
+      - CLAUDECODE
+      - CLAUDE_CODE_CHILD_SESSION
+      - CLAUDE_PROJECT_DIR
+      - CLAUDE_CODE_ENTRYPOINT
+      - CLAUDE_CODE_SSE_PORT
+      - CLAUDE_CODE_IS_COWORK
+    env_ai_agent: [claude-code, claude_code, claude, cowork]
+    skip_flags:
+      - "--dangerously-skip-permissions"
+      - "--permission-mode bypassPermissions"
+      - "--permission-mode=bypassPermissions"
+    api_hosts:
+      - api.anthropic.com
+      - claude.ai
+      - platform.claude.com
+      - mcp-proxy.anthropic.com
+      - downloads.claude.ai
+      - code.claude.com
+    tool_wrappers: ["bash -c"]
+    notes: >-
+      Runs as the native `claude` binary or as `node` executing the npm CLI
+      (`node` alone is too generic to list; the argv fragment
+      `@anthropic-ai/claude-code` covers it). `CLAUDECODE=1` is the documented
+      stable marker in every subprocess; Cowork adds CLAUDE_CODE_IS_COWORK.
+      Bash-tool commands arrive as `bash -c` children with absolute paths,
+      `&&`/`;` chains, no newlines, and commit messages passed through a
+      quoted here-document inside `git commit -m "$(cat ...)"`. User-Agent
+      `claude-cli/<ver> (external, cli)`. Also sends telemetry to
+      http-intake.logs.us5.datadoghq.com, deliberately not listed as an API
+      host because Datadog intake is shared by unrelated software. No built-in
+      SSH tool: a laptop Claude Code that sshes to this host shows only rhythm,
+      no-PTY and style clues; Claude Desktop "SSH sessions" install and run
+      Claude Code on the remote host, so it appears as a local process under
+      an SSH session. The "=" form of --permission-mode is the CLI parser's
+      equivalent of the documented space form.
+    references:
+      - https://code.claude.com/docs/en/env-vars
+      - https://code.claude.com/docs/en/permission-modes
+      - https://code.claude.com/docs/en/network-config
+
+  - id: codex-cli
+    display: OpenAI Codex CLI
+    vendor: OpenAI
+    process_names: [codex, codex-linux-sandbox]
+    argv_contains: ["codex exec"]
+    env_vars:
+      - CODEX_SANDBOX_NETWORK_DISABLED
+      - CODEX_SANDBOX
+      - CODEX_CI
+      - CODEX_THREAD_ID
+    env_ai_agent: [codex-cli, codex_cli, codex]
+    skip_flags:
+      - "--full-auto"
+      - "--dangerously-bypass-approvals-and-sandbox"
+      - "--yolo"
+      - "--ask-for-approval never"
+      - "--sandbox danger-full-access"
+    api_hosts: [api.openai.com, chatgpt.com]
+    notes: >-
+      Rust binary `codex`, sandbox helper `codex-linux-sandbox`; `codex exec`
+      is the non-interactive mode. Child processes get
+      CODEX_SANDBOX_NETWORK_DISABLED=1 / CODEX_SANDBOX from spawn.rs.
+      `--yolo` is an alias of --dangerously-bypass-approvals-and-sandbox
+      (the same flag spelling is used by Gemini CLI, Cursor and Copilot CLI,
+      so the process name decides attribution).
+    references:
+      - https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/spawn.rs
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: gemini-cli
+    display: Gemini CLI
+    vendor: Google
+    process_names: [gemini]
+    env_vars: [GEMINI_CLI]
+    env_ai_agent: [gemini-cli, gemini_cli, gemini]
+    skip_flags:
+      - "--yolo"
+      - "--approval-mode=yolo"
+      - "--approval-mode yolo"
+    api_hosts:
+      - generativelanguage.googleapis.com
+      - cloudcode-pa.googleapis.com
+      - oauth2.googleapis.com
+    tool_wrappers: ["bash -c"]
+    notes: >-
+      Node CLI; the shell tool runs `bash -c` and sets GEMINI_CLI=1 in the
+      child environment. generativelanguage.googleapis.com is the API-key
+      path, cloudcode-pa.googleapis.com the OAuth path; oauth2.googleapis.com
+      is generic Google auth and is disabled in apihosts.yaml.
+      `gemini --yolo -p` was one of the three argv shapes used by the
+      s1ngularity Nx supply-chain payload (2025-08-26).
+    references:
+      - https://google-gemini.github.io/gemini-cli/docs/tools/shell.html
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: cursor-cli
+    display: Cursor CLI (cursor-agent)
+    vendor: Cursor
+    process_names: [cursor-agent, agent]
+    argv_contains: ["cursor-agent"]
+    env_vars:
+      - CURSOR_AGENT
+      - CURSOR_EXTENSION_HOST_ROLE=agent-exec
+    env_ai_agent: [cursor-cli, cursor-agent, cursor_cli]
+    skip_flags:
+      - "--force"
+      - "--yolo"
+      - "--approve-mcps"
+      - "--trust"
+    notes: >-
+      Binary `cursor-agent` (newer releases also install it as `agent`; that
+      bare name is generic, so an `agent` comm match should be corroborated by
+      CURSOR_AGENT in the environ). `-p/--print` is the non-interactive mode,
+      `-f/--force` (alias --yolo) auto-approves; the single-letter forms are
+      not listed as skip flags because `-f` is too common in argv. Sets
+      CURSOR_AGENT=1 in shell commands. The vscode-remote allowlist profile
+      does not suppress this agent; only the remote IDE server is covered.
+      API hosts UNVERIFIED (not in the research doc).
+    references:
+      - https://cursor.com/docs/cli/reference/parameters
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: cursor-ide
+    display: Cursor IDE (remote server / agent terminal)
+    vendor: Cursor
+    process_names: [cursor-server]
+    argv_contains:
+      - ".cursor-server/bin/"
+    env_vars: [CURSOR_TRACE_ID]
+    env_ai_agent: [cursor, cursor-ide]
+    notes: >-
+      Remote-SSH installs ~/.cursor-server (not ~/.vscode-server) and runs
+      `~/.cursor-server/bin/<commit>/node .../out/server-main.js
+      --start-server` (comm cursor-server). A remote server alone is a
+      human-IDE signal, not agent activity; the AI signal is the agent
+      terminal beneath it, whose shells carry CURSOR_TRACE_ID. The
+      vscode-remote allowlist profile suppresses rhythm/pty/style clues for
+      the server; process and flags clues are never suppressed.
+      `server-main.js --start-server` is also the VS Code Remote server argv,
+      so only the `.cursor-server/bin/` path fragment is listed.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: aider
+    display: Aider
+    vendor: Aider AI
+    process_names: [aider]
+    env_ai_agent: [aider]
+    skip_flags: ["--yes-always"]
+    notes: >-
+      Python CLI. AIDER_* environment variables are configuration inputs read
+      by aider and are not exported to child shells, so no env_vars are
+      listed. Talks to whichever provider litellm is configured for (see
+      apihosts.yaml) and sends analytics to app.posthog.com, which is not
+      listed because PostHog is shared by unrelated software.
+    references:
+      - https://aider.chat/docs/config/options.html
+
+  - id: opencode
+    display: OpenCode
+    vendor: SST
+    process_names: [opencode]
+    env_vars: [OPENCODE, OPENCODE_CLIENT]
+    env_ai_agent: [opencode, open_code, open-code]
+    notes: >-
+      Binary `opencode`; detect-agent matches OPENCODE_CLIENT or OPENCODE.
+      Skip flags and API hosts UNVERIFIED (not in the research doc).
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: goose
+    display: Goose
+    vendor: Block
+    process_names: [goose]
+    env_vars:
+      - GOOSE_TERMINAL
+      - AGENT=goose
+      - AGENT_SESSION_ID
+      - GOOSE_PROVIDER
+      - GOOSE_MODE
+    env_ai_agent: [goose]
+    notes: >-
+      Child environment carries GOOSE_TERMINAL=1, AGENT=goose,
+      AGENT_SESSION_ID, GOOSE_PROVIDER; GOOSE_MODE=auto is the unattended
+      mode (an environment setting, not a flag, so it is not a skip flag).
+      The generic `AGENT=goose` is the precedent for the AI_AGENT convention.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: amazon-q-cli
+    display: Amazon Q Developer CLI
+    vendor: Amazon
+    process_names: [q, qchat, qterm]
+    argv_contains: ["q chat", "qchat"]
+    env_vars: [Q_TERM, QTERM_SESSION_ID]
+    env_ai_agent: [amazon-q, amazon-q-cli, amazon_q, q]
+    skip_flags:
+      - "--trust-all-tools"
+      - "--no-interactive"
+    notes: >-
+      `q chat --trust-all-tools --no-interactive` was one of the three
+      s1ngularity argv shapes. The one-letter comm `q` is a weak signal on
+      its own; corroborate with argv or Q_TERM/QTERM_SESSION_ID
+      (shell-integration variables). API hosts UNVERIFIED.
+    references:
+      - https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line.html
+
+  - id: kiro-cli
+    display: Kiro CLI
+    vendor: Amazon
+    process_names: [kiro-cli]
+    argv_contains: ["kiro-cli chat"]
+    env_vars:
+      - KIRO_API_KEY
+      - TERM_PROGRAM=kiro
+    env_ai_agent: [kiro, kiro-cli, kiro_cli]
+    skip_flags:
+      - "--trust-all-tools"
+      - "--trust-tools="
+    notes: >-
+      Headless form `kiro-cli chat --no-interactive --trust-all-tools` or
+      `--trust-tools=<list>`. KIRO_API_KEY authenticates headless runs;
+      TERM_PROGRAM=kiro marks the IDE's integrated terminal (detect-agent
+      uses that). API hosts UNVERIFIED.
+    references:
+      - https://kiro.dev/docs/cli/headless/
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: copilot-cli
+    display: GitHub Copilot CLI
+    vendor: GitHub
+    process_names: [copilot]
+    env_vars: [COPILOT_MODEL, COPILOT_ALLOW_ALL, COPILOT_GITHUB_TOKEN]
+    env_ai_agent: [github-copilot, copilot-cli, copilot, github_copilot]
+    skip_flags:
+      - "--allow-all-tools"
+      - "--allow-all"
+      - "--yolo"
+    notes: >-
+      Binary `copilot`. `--allow-all` / `--yolo` grant every tool without
+      prompting; COPILOT_ALLOW_ALL is the environment equivalent.
+      API hosts UNVERIFIED.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: cline
+    display: Cline
+    vendor: Cline Bot
+    env_vars: [CLINE_ACTIVE]
+    env_ai_agent: [cline]
+    notes: >-
+      Only the environment marker CLINE_ACTIVE (from detect-agent) is
+      verified. Process name, skip flags and API hosts UNVERIFIED; the
+      editor-extension form runs inside the VS Code / Cursor server process.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: augment-cli
+    display: Augment CLI
+    vendor: Augment Code
+    env_vars: [AUGMENT_AGENT]
+    env_ai_agent: [augment-cli, augment, augment_cli]
+    notes: >-
+      Environment marker AUGMENT_AGENT from detect-agent. Binary name, skip
+      flags and API hosts UNVERIFIED.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: antigravity
+    display: Antigravity
+    vendor: Google
+    env_vars: [ANTIGRAVITY_AGENT, ANTIGRAVITY_CLI_ALIAS]
+    env_ai_agent: [antigravity]
+    notes: >-
+      Environment markers from detect-agent. Binary name, skip flags and API
+      hosts UNVERIFIED.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: junie
+    display: Junie
+    vendor: JetBrains
+    env_vars: [JUNIE_DATA, JUNIE_SHIM_PATH]
+    env_ai_agent: [junie]
+    notes: >-
+      Environment markers from detect-agent. Binary name, skip flags and API
+      hosts UNVERIFIED.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: devin
+    display: Devin
+    vendor: Cognition
+    env_ai_agent: [devin]
+    notes: >-
+      The only verified marker is the file /opt/.devin on the sandbox host,
+      which is a host-level fact rather than a per-process one; the v0.1
+      pack has no process or environment rule for it. Operators running
+      Devin-managed machines should treat the whole host as agent-operated.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: warp
+    display: Warp (Agent Mode)
+    vendor: Warp
+    env_vars: [WARP_API_KEY]
+    env_ai_agent: [warp]
+    notes: >-
+      UNVERIFIED: WARP_API_KEY is believed to be present in Warp agent-mode
+      child processes but this was not confirmed against source. Treat a
+      match as weak evidence. Binary name, skip flags and API hosts
+      UNVERIFIED.
+    references:
+      - https://docs.warp.dev/
+
+  - id: openclaw
+    display: OpenClaw
+    vendor: OpenClaw
+    env_vars: [OPENCLAW_SHELL]
+    env_ai_agent: [openclaw]
+    notes: >-
+      Environment marker OPENCLAW_SHELL from detect-agent. Everything else
+      UNVERIFIED.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: kimi
+    display: Kimi CLI
+    vendor: Moonshot AI
+    env_vars: [KIMI_PLUGIN_ROOT]
+    env_ai_agent: [kimi, kimi-cli]
+    notes: >-
+      Environment marker KIMI_PLUGIN_ROOT from detect-agent. Binary name,
+      skip flags and API hosts UNVERIFIED.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
+
+  - id: grok
+    display: Grok CLI
+    vendor: xAI
+    env_vars: [GROK_PLUGIN_ROOT, GROK_PLUGIN_DATA]
+    env_ai_agent: [grok, grok-cli]
+    api_hosts: [api.x.ai]
+    notes: >-
+      Environment markers from detect-agent; api.x.ai is the xAI API host
+      listed in the research doc. Binary name and skip flags UNVERIFIED.
+    references:
+      - https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json

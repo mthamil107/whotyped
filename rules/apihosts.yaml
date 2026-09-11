@@ -1,0 +1,114 @@
+# whotyped default rule pack: AI API destinations for the netconn reader.
+#
+# Matching (see rules.Pack.HostMatch): `host` is compared case-insensitively
+# against the resolved or SNI-derived destination name; `*` inside a host
+# is a wildcard for one or more labels' worth of characters except `/`
+# (path.Match semantics, so `*.openai.azure.com` matches
+# `myres.openai.azure.com`). `cidr` matches a destination IP. `port` 0
+# means 443. A hit attributed to a session is clue net.ai_api (+30);
+# unattributed hits are net.ai_api_unattributed (+15).
+#
+# Source: docs/research/02-agent-fingerprints.md, "AI API hostnames".
+schema: whotyped.rules.v1
+version: "2026.09.11"
+
+api_hosts:
+  # Anthropic / Claude Code
+  - host: api.anthropic.com
+    agent: claude-code
+    vendor: Anthropic
+  - host: claude.ai
+    agent: claude-code
+    vendor: Anthropic
+    notes: OAuth login and web app; Claude Code uses it for account auth.
+  - host: platform.claude.com
+    agent: claude-code
+    vendor: Anthropic
+  - host: mcp-proxy.anthropic.com
+    agent: claude-code
+    vendor: Anthropic
+  - host: downloads.claude.ai
+    agent: claude-code
+    vendor: Anthropic
+    notes: Native installer and update downloads; a hit means Claude Code is being installed or updated on this host.
+  - host: code.claude.com
+    agent: claude-code
+    vendor: Anthropic
+    notes: Documentation host listed in the Claude Code network requirements; weak on its own.
+
+  # OpenAI / Codex CLI
+  - host: api.openai.com
+    agent: codex-cli
+    vendor: OpenAI
+    notes: Also used by aider, opencode, and any OpenAI SDK application; the agent attribution is a hint, not proof.
+  - host: chatgpt.com
+    agent: codex-cli
+    vendor: OpenAI
+    notes: ChatGPT-account login path for Codex CLI.
+
+  # Google / Gemini CLI
+  - host: generativelanguage.googleapis.com
+    agent: gemini-cli
+    vendor: Google
+    notes: Gemini API (API-key auth).
+  - host: cloudcode-pa.googleapis.com
+    agent: gemini-cli
+    vendor: Google
+    notes: Gemini CLI OAuth (Code Assist) path.
+  - host: aiplatform.googleapis.com
+    vendor: Google
+    notes: Vertex AI; used by many SDKs, no single agent.
+  - host: oauth2.googleapis.com
+    agent: gemini-cli
+    vendor: Google
+    disabled: true
+    notes: >-
+      Generic Google OAuth token endpoint used by every Google client
+      library. A disabled entry is dropped from the merged pack, so to
+      enable it copy the whole entry (without `disabled: true`) into a file
+      in rules.dirs; only do that on hosts that never talk to Google otherwise.
+
+  # Amazon
+  - host: bedrock-runtime.*.amazonaws.com
+    vendor: Amazon
+    notes: Bedrock inference endpoints (regional). Claude Code and others can be pointed at Bedrock.
+
+  # Microsoft
+  - host: "*.openai.azure.com"
+    vendor: Microsoft
+    notes: Azure OpenAI resources (per-resource subdomain).
+
+  # Other providers and routers
+  - host: api.cohere.com
+    vendor: Cohere
+  - host: api.mistral.ai
+    vendor: Mistral
+  - host: openrouter.ai
+    vendor: OpenRouter
+    notes: Model router used by aider, opencode and many agents.
+  - host: api.deepseek.com
+    vendor: DeepSeek
+  - host: api.fireworks.ai
+    vendor: Fireworks
+  - host: api.groq.com
+    vendor: Groq
+  - host: api.together.xyz
+    vendor: Together
+  - host: api.x.ai
+    agent: grok
+    vendor: xAI
+  - host: api.perplexity.ai
+    vendor: Perplexity
+
+  # Local inference
+  - cidr: 127.0.0.1/32
+    port: 11434
+    vendor: Ollama
+    disabled: true
+    notes: >-
+      Ollama's default listener. Disabled because loopback traffic to a
+      local model server is indistinguishable from an operator's own
+      tooling and because the netconn reader cannot attribute it to an SSH
+      session reliably. A disabled entry is dropped from the merged pack;
+      to enable it, copy this entry without `disabled: true` into a file in
+      rules.dirs on hosts where any local-model use is unexpected.

@@ -1,0 +1,150 @@
+# whotyped configuration — /etc/whotyped/config.yaml
+#
+# Every key is optional; the value shown is the built-in default unless the
+# comment says otherwise. Unknown keys are rejected so typos are caught.
+# Durations accept Go syntax plus days: 30s, 15m, 36h, 7d, 1d12h.
+# Validate with:  whotyped check
+
+# Name reported in the alert "host" field. Default: the system hostname.
+host: ""
+
+# Where state.json (open tracks, log cursors, dedupe keys) lives.
+state_dir: /var/lib/whotyped
+
+# Daemon log verbosity: debug | info | warn | error
+log_level: info
+
+readers:
+  # sshd log source. auto = journalctl if present, else the file below or
+  # /var/log/auth.log or /var/log/secure, whichever is readable.
+  sshlog:
+    source: auto          # auto | journald | file
+    file: ""              # e.g. /var/log/auth.log when source is file
+
+  # auditd execve records give command text for remote sessions. Needs the
+  # rule in deploy/audit.rules (installed by `whotyped check --fix`) and
+  # read access to the log (run as root or in the adm/audit group).
+  auditd:
+    enabled: true
+    file: /var/log/audit/audit.log
+
+  # /proc scanner: process names, argv, skip flags and (as root) the
+  # environment of every process, which is where AI_AGENT and CLAUDECODE=1
+  # are found. read_environ: false keeps whotyped out of other users'
+  # environments at the cost of losing the declared-agent signal.
+  procfs:
+    enabled: true
+    interval: 2s
+    read_environ: true
+
+  # /proc/net/tcp scanner for connections to AI API hosts. resolve: true
+  # performs reverse DNS on destination IPs, which is a network call;
+  # leave it off unless the host has no outbound proxy logging.
+  netconn:
+    enabled: true
+    interval: 5s
+    resolve: false
+
+rules:
+  # Override directories merged on top of the embedded packs, in order;
+  # *.yaml files inside are applied sorted by name. Later entries with the
+  # same id replace earlier ones; `disabled: true` removes an id.
+  dirs:
+    - /etc/whotyped/rules.d
+  # Reserved. v0.1 never downloads rule packs.
+  auto_update: false
+
+scoring:
+  # Track window: exec channels within this span of the same
+  # (user, key fingerprint, source IP) are one track.
+  window: 15m
+  # Level boundaries; must satisfy info < alert < high.
+  thresholds:
+    info: 40
+    alert: 70
+    high: 90
+  # After the first alert, at most one agent_still_active per interval.
+  realert_interval: 30m
+  # An alert (>= 70) requires at least two clue categories to contribute.
+  # Turning this off lets a single strong category alert on its own.
+  require_two_categories: true
+
+privacy:
+  # What command text reaches alert evidence.
+  #   redacted  matched fragment, argv0 and length only (default)
+  #   full      the whole command line (sensitive: may contain secrets)
+  #   none      no command text at all
+  command_text: redacted
+  # Replace user names with a salted hash in alerts and state.
+  hash_usernames: false
+
+# Freeze windows: any declared or suspected (>= info threshold) agent
+# activity inside a window is a freeze_violation. Two forms:
+#   recurring: cron (minute hour day-of-month month day-of-week) + duration
+#   one-off:   start + end in RFC3339
+# Default list is empty; these entries are examples.
+freeze_windows:
+  - name: weekend-change-freeze
+    cron: "0 17 * * 5"        # every Friday 17:00 ...
+    duration: 63h             # ... until Monday 08:00
+    timezone: UTC             # IANA zone for the cron; default: local time
+    level: high               # level of the freeze_violation alert
+    include_declared: true    # declared agents (AI_AGENT set) violate too
+  - name: q3-release
+    start: 2026-09-28T00:00:00Z
+    end: 2026-09-30T00:00:00Z
+    level: high
+
+allowlist:
+  # Profiles from rules/allowlist.yaml to apply on this host. Each one
+  # suppresses the rhythm/pty/style clues its automation produces; none can
+  # suppress process, flags or identity clues. Narrow them with users /
+  # src_cidrs in an override file. Default: none enabled.
+  profiles_enabled:
+    - ansible
+    - vscode-remote
+  # An extra allowlist YAML outside rules.dirs (schema whotyped.allowlist.v1).
+  extra_file: ""
+
+sinks:
+  # Local JSONL file, rotated by size. Always safe to leave on; `whotyped
+  # report` reads it.
+  jsonfile:
+    enabled: true
+    path: /var/lib/whotyped/alerts.jsonl
+    max_size_mb: 50
+    keep: 5
+    min_level: info           # info | alert | high
+
+  syslog:
+    enabled: false
+    tag: whotyped
+    facility: auth
+    min_level: alert
+
+  # HTTP POST per alert. Put tokens in headers via environment expansion in
+  # your deployment tooling, not in this file.
+  webhook:
+    enabled: false
+    url: ""                   # https://... (http allowed for local relays)
+    format: json              # json | slack | teams | discord
+    min_level: alert
+    timeout: 10s
+    headers: {}
+
+  # SMTP. Credentials are read from the named environment variables at
+  # start-up so that this file never holds a password.
+  email:
+    enabled: false
+    smtp: ""                  # host:port, e.g. smtp.example.com:587
+    from: ""
+    to: []
+    starttls: true
+    username_env: ""          # e.g. WHOTYPED_SMTP_USER
+    password_env: ""          # e.g. WHOTYPED_SMTP_PASS
+    min_level: high
+
+  # Prometheus text exposition on a local listener (/metrics).
+  prometheus:
+    enabled: false
+    listen: 127.0.0.1:9477

@@ -1,0 +1,223 @@
+package webhook
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/whotyped/whotyped/internal/alert"
+	"github.com/whotyped/whotyped/internal/clues"
+	"github.com/whotyped/whotyped/internal/score"
+)
+
+func sample() alert.Alert {
+	return alert.Alert{
+		Schema: alert.Schema, TS: time.Date(2026, 9, 11, 14, 3, 22, 0, time.UTC), Host: "web-03",
+		Event: alert.EvDetected, Class: score.ClassSuspected, Mode: "remote_agent",
+		User: "alice", SrcIP: "10.0.0.5", KeyFingerprint: "SHA256:Qm3k", Score: 82, Level: score.LevelAlert,
+		Reasons: []clues.Clue{
+			{ID: "rhythm.burst", Category: clues.CatRhythm, Weight: 20, Evidence: "14 exec channels in 92s"},
+			{ID: "style.tool_wrapper", Category: clues.CatStyle, Weight: 8, Evidence: "bash -lc <cmd> && cat"},
+		},
+		Suppressed: []score.Suppression{}, SessionID: "tr_9f31c2a7b8e4", Connections: 1,
+		ActionsHint: "Ask alice whether an AI tool is driving this key.",
+	}
+}
+
+type capture struct {
+	mu      sync.Mutex
+	body    []byte
+	headers http.Header
+	status  int
+}
+
+func (c *capture) server() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		c.mu.Lock()
+		c.body, c.headers = b, r.Header.Clone()
+		status := c.status
+		c.mu.Unlock()
+		if status == 0 {
+			status = http.StatusOK
+		}
+		w.WriteHeader(status)
+		io.WriteString(w, "ok")
+	}))
+}
+
+func decode(t *testing.T, b []byte) map[string]any {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("payload is not JSON: %v\n%s", err, b)
+	}
+	return m
+}
+
+func TestSlackFormat(t *testing.T) {
+	c := &capture{}
+	srv := c.server()
+	defer srv.Close()
+	s := New(srv.URL, "slack", time.Second, map[string]string{"X-Token": "abc"})
+	if s.Name() != "webhook:slack" {
+		t.Fatalf("name %q", s.Name())
+	}
+	if err := s.Send(context.Background(), sample()); err != nil {
+		t.Fatal(err)
+	}
+	if c.headers.Get("X-Token") != "abc" || c.headers.Get("Content-Type") != "application/json" {
+		t.Fatalf("headers %v", c.headers)
+	}
+	m := decode(t, c.body)
+	blocks := m["blocks"].([]any)
+	header := blocks[0].(map[string]any)
+	if header["type"] != "header" || header["text"].(map[string]any)["text"] != "whotyped: agent_detected on web-03" {
+		t.Fatalf("header block %v", header)
+	}
+	fields := blocks[1].(map[string]any)["fields"].([]any)
+	joined := ""
+	for _, f := range fields {
+		joined += f.(map[string]any)["text"].(string) + "|"
+	}
+	for _, want := range []string{"*User*\nalice", "*Source IP*\n10.0.0.5", "*Score*\n82", "*Level*\nalert", "*Agent*\n-"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("fields missing %q in %q", want, joined)
+		}
+	}
+	reasons := blocks[2].(map[string]any)["text"].(map[string]any)["text"].(string)
+	if !strings.Contains(reasons, "• rhythm.burst (20): 14 exec channels in 92s") {
+		t.Fatalf("reasons %q", reasons)
+	}
+	if !strings.Contains(reasons, "bash -lc &lt;cmd&gt; &amp;&amp; cat") {
+		t.Fatalf("mrkdwn not escaped: %q", reasons)
+	}
+	hint := blocks[3].(map[string]any)["elements"].([]any)[0].(map[string]any)["text"]
+	if hint != sample().ActionsHint {
+		t.Fatalf("hint %v", hint)
+	}
+}
+
+func TestSlackFreezeBlock(t *testing.T) {
+	a := sample()
+	a.Event = alert.EvFreeze
+	a.FreezeWindow = &alert.Freeze{Name: "release", Until: a.TS.Add(time.Hour)}
+	b, err := Payload("slack", a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := decode(t, b)["blocks"].([]any)
+	if len(blocks) != 5 || !strings.Contains(blocks[3].(map[string]any)["text"].(map[string]any)["text"].(string), "release") {
+		t.Fatalf("freeze block missing: %d blocks", len(blocks))
+	}
+}
+
+func TestTeamsFormat(t *testing.T) {
+	c := &capture{}
+	srv := c.server()
+	defer srv.Close()
+	if err := New(srv.URL, "teams", time.Second, nil).Send(context.Background(), sample()); err != nil {
+		t.Fatal(err)
+	}
+	m := decode(t, c.body)
+	if m["type"] != "message" {
+		t.Fatalf("envelope %v", m)
+	}
+	att := m["attachments"].([]any)[0].(map[string]any)
+	if att["contentType"] != "application/vnd.microsoft.card.adaptive" {
+		t.Fatalf("attachment %v", att)
+	}
+	card := att["content"].(map[string]any)
+	if card["type"] != "AdaptiveCard" || card["version"] != "1.4" {
+		t.Fatalf("card %v", card)
+	}
+	body := card["body"].([]any)
+	if body[0].(map[string]any)["text"] != "whotyped: agent_detected on web-03" {
+		t.Fatalf("title %v", body[0])
+	}
+	facts := body[1].(map[string]any)["facts"].([]any)
+	if facts[0].(map[string]any)["value"] != "alice" || len(facts) != 7 {
+		t.Fatalf("facts %v", facts)
+	}
+	if txt := body[2].(map[string]any)["text"].(string); !strings.Contains(txt, "- rhythm.burst (20): 14 exec channels in 92s") {
+		t.Fatalf("reasons %q", txt)
+	}
+}
+
+func TestGenericFormat(t *testing.T) {
+	c := &capture{}
+	srv := c.server()
+	defer srv.Close()
+	if err := New(srv.URL, "", time.Second, nil).Send(context.Background(), sample()); err != nil {
+		t.Fatal(err)
+	}
+	var back alert.Alert
+	if err := json.Unmarshal(c.body, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Schema != alert.Schema || back.Event != alert.EvDetected || back.Score != 82 || len(back.Reasons) != 2 {
+		t.Fatalf("round trip %+v", back)
+	}
+}
+
+func TestStatusClassification(t *testing.T) {
+	c := &capture{}
+	srv := c.server()
+	defer srv.Close()
+	s := New(srv.URL, "generic", time.Second, nil)
+	cases := []struct {
+		status    int
+		wantErr   bool
+		transient bool
+	}{
+		{200, false, false}, {204, false, false},
+		{400, true, false}, {404, true, false},
+		{429, true, true}, {500, true, true}, {503, true, true},
+	}
+	for _, tc := range cases {
+		c.mu.Lock()
+		c.status = tc.status
+		c.mu.Unlock()
+		err := s.Send(context.Background(), sample())
+		if (err != nil) != tc.wantErr {
+			t.Fatalf("status %d: err=%v", tc.status, err)
+		}
+		if errors.Is(err, ErrTransient) != tc.transient || alert.IsTransient(err) != tc.transient {
+			t.Fatalf("status %d: transient=%v err=%v", tc.status, tc.transient, err)
+		}
+	}
+	// Connection refused is transient too.
+	srv.Close()
+	if err := s.Send(context.Background(), sample()); !errors.Is(err, ErrTransient) {
+		t.Fatalf("network error not transient: %v", err)
+	}
+}
+
+func TestUnknownFormat(t *testing.T) {
+	s := New("http://127.0.0.1:1", "carrier-pigeon", time.Second, nil)
+	err := s.Send(context.Background(), sample())
+	if err == nil || errors.Is(err, ErrTransient) {
+		t.Fatalf("unknown format should be a permanent error, got %v", err)
+	}
+}
+
+func TestTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+	}))
+	defer srv.Close()
+	err := New(srv.URL, "generic", 50*time.Millisecond, nil).Send(context.Background(), sample())
+	if !errors.Is(err, ErrTransient) {
+		t.Fatalf("timeout should be transient: %v", err)
+	}
+}

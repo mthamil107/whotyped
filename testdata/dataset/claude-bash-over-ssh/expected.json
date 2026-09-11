@@ -1,0 +1,8 @@
+{
+  "score_min": 70,
+  "score_max": 85,
+  "class": "suspected_agent",
+  "level": "alert",
+  "mode": "remote_agent",
+  "notes": "Claude Code Bash tool on a laptop, ssh per call: 16 short-lived connections, no PTY, machine-regular cadence, tool-shaped commands. No banner (INFO logging)."
+}

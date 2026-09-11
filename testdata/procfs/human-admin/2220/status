@@ -1,0 +1,13 @@
+Name:	sudo
+Umask:	0022
+State:	S (sleeping)
+Tgid:	2220
+Ngid:	0
+Pid:	2220
+PPid:	2210
+TracerPid:	0
+Uid:	0	0	0	0
+Gid:	0	0	0	0
+FDSize:	64
+Groups:	0
+Threads:	1

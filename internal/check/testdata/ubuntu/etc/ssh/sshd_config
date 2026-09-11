@@ -1,0 +1,25 @@
+# Fixture: Ubuntu 24.04 style sshd_config with a drop-in directory and a
+# trailing Match block.
+
+Include /etc/ssh/sshd_config.d/*.conf
+
+#Port 22
+#AddressFamily any
+
+KbdInteractiveAuthentication no
+UsePAM yes
+X11Forwarding yes
+PrintMotd no
+
+# Allow client to pass locale environment variables
+AcceptEnv LANG LC_*
+
+# This LogLevel comes after the Include, so the drop-in's value wins.
+LogLevel INFO
+
+Subsystem	sftp	/usr/lib/openssh/sftp-server
+
+Match User backup
+	AcceptEnv BACKUP_JOB
+	LogLevel DEBUG3
+	PermitUserEnvironment yes

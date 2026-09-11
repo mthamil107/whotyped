@@ -1,0 +1,13 @@
+# Fixture: RHEL 8 style sshd_config, no Include, INFO, no AI_AGENT.
+HostKey /etc/ssh/ssh_host_rsa_key
+SyslogFacility AUTHPRIV
+PermitRootLogin no
+AuthorizedKeysFile	.ssh/authorized_keys
+PasswordAuthentication yes
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding yes
+PrintMotd no
+AcceptEnv LANG LC_CTYPE LC_NUMERIC LC_TIME LC_COLLATE LC_MONETARY LC_MESSAGES
+AcceptEnv XMODIFIERS
+Subsystem	sftp	/usr/libexec/openssh/sftp-server

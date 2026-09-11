@@ -1,0 +1,16 @@
+2026-09-11T09:12:01.000412+02:00 rhel10-app sshd[812]: Server listening on 0.0.0.0 port 22.
+2026-09-11T09:12:44.210553+02:00 rhel10-app sshd-session[3311]: Connection from 192.0.2.77 port 49822 on 10.1.2.3 port 22
+2026-09-11T09:12:44.981220+02:00 rhel10-app sshd-session[3311]: Accepted publickey for deploy from 192.0.2.77 port 49822 ssh2: RSA SHA256:aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV1wX2yZ3aB4c
+2026-09-11T09:12:44.984001+02:00 rhel10-app sshd-session[3311]: pam_unix(sshd:session): session opened for user deploy(uid=1002) by deploy(uid=0)
+2026-09-11T09:12:44.990870+02:00 rhel10-app sshd-session[3311]: User child is on pid 3318
+2026-09-11T09:12:45.020114+02:00 rhel10-app sshd-session[3318]: Starting session: subsystem 'sftp' for deploy from 192.0.2.77 port 49822 id 0
+2026-09-11T09:12:47.330909+02:00 rhel10-app sshd-session[3318]: Close session: user deploy from 192.0.2.77 port 49822 id 0
+2026-09-11T09:12:47.401223+02:00 rhel10-app sshd-session[3318]: Starting session: command on pts/3 for deploy from 192.0.2.77 port 49822 id 0
+2026-09-11T09:12:49.110000+02:00 rhel10-app sshd-session[3318]: Close session: user deploy from 192.0.2.77 port 49822 id 0
+2026-09-11T09:12:49.115521+02:00 rhel10-app sshd-session[3318]: Received disconnect from 192.0.2.77 port 49822:11: disconnected by user
+2026-09-11T09:12:49.115800+02:00 rhel10-app sshd-session[3318]: Disconnected from user deploy 192.0.2.77 port 49822
+2026-09-11T09:12:49.120004+02:00 rhel10-app sshd-session[3311]: pam_unix(sshd:session): session closed for user deploy
+2026-09-11T09:13:02.000000+02:00 rhel10-app sshd-session[3402]: Connection reset by 198.51.100.200 port 33001 [preauth]
+2026-09-11T09:13:30.500000+02:00 rhel10-app sshd-session[3410]: error: kex_exchange_identification: Connection closed by remote host
+2026-09-11T09:13:30.500100+02:00 rhel10-app sshd-session[3410]: Connection closed by 198.51.100.201 port 33002
+2026-09-11T09:14:00.000000+02:00 rhel10-app sshd[812]: error: Timeout before authentication for 198.51.100.202, pid = 3420

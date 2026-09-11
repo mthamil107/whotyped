@@ -1,0 +1,13 @@
+Name:	claude
+Umask:	0022
+State:	S (sleeping)
+Tgid:	4411
+Ngid:	0
+Pid:	4411
+PPid:	4400
+TracerPid:	0
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+FDSize:	64
+Groups:	1000
+Threads:	1

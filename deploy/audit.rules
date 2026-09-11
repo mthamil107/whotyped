@@ -1,0 +1,14 @@
+## whotyped auditd rules. Installed by `whotyped check --fix` as
+## /etc/audit/rules.d/90-whotyped.rules.
+##
+## Records every execve by a logged-in user (auid >= 1000, i.e. a real login,
+## not a system service; auid!=unset skips processes with no login session).
+## The `ses=` field on each record ties the command to the SSH session that
+## auditd opened at login, which is how whotyped attributes command text and
+## style/flags clues to a remote session without cooperation from the client.
+##
+## Load without restarting auditd:  augenrules --load
+## (or, on systems without augenrules: auditctl -R /etc/audit/rules.d/90-whotyped.rules)
+## The key "whotyped" lets you inspect matches with:  ausearch -k whotyped
+-a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=unset -k whotyped
+-a always,exit -F arch=b32 -S execve -F auid>=1000 -F auid!=unset -k whotyped

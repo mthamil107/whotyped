@@ -1,0 +1,18 @@
+Sep 11 21:40:01 deb13-edge sshd-auth[5100]: Invalid user oracle from 198.51.100.61 port 51001
+Sep 11 21:40:03 deb13-edge sshd-auth[5100]: Failed password for invalid user oracle from 198.51.100.61 port 51001 ssh2
+Sep 11 21:40:03 deb13-edge sshd-auth[5100]: Connection closed by invalid user oracle 198.51.100.61 port 51001 [preauth]
+Sep 11 21:40:05 deb13-edge sshd-session[5104]: Disconnected from invalid user oracle 198.51.100.61 port 51001 [preauth]
+Sep 11 21:40:20 deb13-edge sshd-auth[5110]: Failed publickey for bob from 203.0.113.9 port 51200 ssh2: ED25519 SHA256:zZ9yY8xX7wW6vV5uU4tT3sS2rR1qQ0pP9oO8nN7mM6l
+Sep 11 21:40:21 deb13-edge sshd-auth[5110]: Connection closed by authenticating user bob 203.0.113.9 port 51200 [preauth]
+Sep 11 21:40:22 deb13-edge sshd-session[5110]: Connection closed by authenticating user bob 203.0.113.9 port 51200 [preauth]
+Sep 11 21:41:00 deb13-edge sshd-session[5130]: Accepted publickey for bob from 203.0.113.9 port 51210 ssh2: ED25519 SHA256:bB2cC3dD4eE5fF6gG7hH8iI9jJ0kK1lL2mM3nN4oO5p
+Sep 11 21:41:00 deb13-edge sshd-session[5130]: pam_unix(sshd:session): session opened for user bob(uid=1001) by bob(uid=0)
+Sep 11 21:41:00 deb13-edge sshd-session[5130]: User child is on pid 5136
+Sep 11 21:41:00 deb13-edge sshd-session[5136]: Starting session: forced-command (key-option) '/usr/local/bin/gate --strict' for bob from 203.0.113.9 port 51210 id 0
+Sep 11 21:41:03 deb13-edge sshd-session[5136]: Close session: user bob from 203.0.113.9 port 51210 id 0
+Sep 11 21:41:03 deb13-edge sshd-session[5136]: Received disconnect from 203.0.113.9 port 51210:11: disconnected by user
+Sep 11 21:41:03 deb13-edge sshd-session[5136]: Disconnected from user bob 203.0.113.9 port 51210
+Sep 11 21:41:03 deb13-edge sshd-session[5130]: pam_unix(sshd:session): session closed for user bob
+Sep 11 21:42:10 deb13-edge sshd-auth[5150]: error: maximum authentication attempts exceeded for root from 198.51.100.62 port 51300 ssh2 [preauth]
+Sep 11 21:42:10 deb13-edge sshd-auth[5150]: Disconnecting authenticating user root 198.51.100.62 port 51300: Too many authentication failures [preauth]
+Sep 11 21:43:00 deb13-edge sshd[900]: error: Timeout before authentication for 198.51.100.63, pid = 5160

@@ -1,0 +1,22 @@
+Sep  1 08:00:11 db-01 sshd[9001]: Server listening on 0.0.0.0 port 22.
+Sep  1 08:01:02 db-01 sshd[9020]: Accepted keyboard-interactive/pam for dba from 10.20.0.15 port 38210 ssh2
+Sep  1 08:01:02 db-01 sshd[9020]: pam_unix(sshd:session): session opened for user dba(uid=1200) by (uid=0)
+Sep  1 08:01:02 db-01 sshd[9020]: User child is on pid 9026
+Sep  1 08:01:02 db-01 sshd[9026]: Starting session: shell on pts/1 for dba from 10.20.0.15 port 38210 id 0
+Sep  1 08:02:40 db-01 sshd[9040]: Accepted publickey for alice from 203.0.113.5 port 51234 ssh2: ED25519-CERT SHA256:Q7kXf1sN0d3n4uB6p9x1Y2zA3bC4dE5fG6hI7jK8lM0 ID alice@corp (serial 42) CA ED25519 SHA256:9mZaB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV1wX2yZ3a
+Sep  1 08:02:40 db-01 sshd[9040]: pam_unix(sshd:session): session opened for user alice by (uid=0)
+Sep  1 08:02:40 db-01 sshd[9040]: User child is on pid 9046
+Sep  1 08:02:40 db-01 sshd[9046]: Starting session: forced-command (config) '/usr/libexec/openssh/sftp-server' for alice from 203.0.113.5 port 51234 id 0
+Sep  1 08:03:15 db-01 sshd[9046]: Close session: user alice from 203.0.113.5 port 51234 id 0
+Sep  1 08:03:15 db-01 sshd[9046]: Disconnected from user alice 203.0.113.5 port 51234
+Sep  1 08:03:15 db-01 sshd[9040]: pam_unix(sshd:session): session closed for user alice
+Sep  1 08:05:00 db-01 sshd[9060]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=198.51.100.9  user=root
+Sep  1 08:05:02 db-01 sshd[9060]: Failed password for root from 198.51.100.9 port 41000 ssh2
+Sep  1 08:05:02 db-01 sshd[9060]: error: PAM: Authentication failure for root from 198.51.100.9
+Sep  1 08:05:04 db-01 sshd[9060]: Failed keyboard-interactive/pam for root from 198.51.100.9 port 41000 ssh2
+Sep  1 08:05:04 db-01 sshd[9060]: Connection closed by authenticating user root 198.51.100.9 port 41000 [preauth]
+Sep  1 08:06:00 db-01 sshd[9070]: fatal: Timeout before authentication for 198.51.100.10 port 41010
+Sep  1 08:30:00 db-01 sshd[9026]: Close session: user dba from 10.20.0.15 port 38210 id 0
+Sep  1 08:30:00 db-01 sshd[9026]: Received disconnect from 10.20.0.15 port 38210:11: disconnected by user
+Sep  1 08:30:00 db-01 sshd[9026]: Disconnected from user dba 10.20.0.15 port 38210
+Sep  1 08:30:00 db-01 sshd[9020]: pam_unix(sshd:session): session closed for user dba
