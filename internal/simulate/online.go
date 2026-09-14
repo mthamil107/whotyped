@@ -2,6 +2,8 @@ package simulate
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,30 +36,47 @@ type Options struct {
 	Executable string
 }
 
-// SimMarker is the file the benign commands create and the cleanup removes.
-const SimMarker = "/tmp/whotyped-sim.txt"
+// SimMarkerPrefix is the start of the per-run marker file the benign
+// commands create on the target and the cleanup removes. A random suffix
+// (see newMarker) means nobody can pre-plant a symlink at a known path in
+// the shared /tmp and have the simulation's heredoc write through it.
+const SimMarkerPrefix = "/tmp/whotyped-sim-"
+
+// newMarker returns a fresh marker path for one run.
+func newMarker() string {
+	var b [6]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		// crypto/rand failing is not worth aborting a simulation over;
+		// fall back to the pid and clock, still unique per run.
+		return fmt.Sprintf("%s%d-%d.txt", SimMarkerPrefix, os.Getpid(), time.Now().UnixNano())
+	}
+	return SimMarkerPrefix + hex.EncodeToString(b[:]) + ".txt"
+}
 
 // AgentSubcommand is the hidden mode the local-agent scenario spawns:
 // `whotyped __sim-agent --dangerously-skip-permissions` with CLAUDECODE=1.
 const AgentSubcommand = "__sim-agent"
 
-// agentCommands are the 12 benign, tool-shaped commands an agent's Bash tool
-// typically emits: cd && chains, heredocs, pager guards, timeouts, sed -n.
-var agentCommands = []string{
-	`cd /tmp && ls -la 2>&1 | head -n 20`,
-	`cat <<'EOF' > ` + SimMarker + `
+// agentCommandsFor returns the 12 benign, tool-shaped commands an agent's
+// Bash tool typically emits: cd && chains, heredocs, pager guards, timeouts,
+// sed -n. marker is the per-run file they create and read back.
+func agentCommandsFor(marker string) []string {
+	return []string{
+		`cd /tmp && ls -la 2>&1 | head -n 20`,
+		`cat <<'EOF' > ` + marker + `
 whotyped simulate: benign marker file
 EOF`,
-	`cd /tmp && cat ` + SimMarker + ` 2>&1 | head -n 5`,
-	`systemctl status --no-pager ssh 2>&1 | head -n 5 || true`,
-	`timeout 5 uname -a`,
-	`sed -n '1,20p' /etc/hostname`,
-	`git --no-pager --version 2>&1 | head -n 1`,
-	`cd /tmp && df -h . 2>&1 | tail -n 2`,
-	`timeout 5 ps -eo pid,comm 2>&1 | head -n 10`,
-	`cd /tmp && grep -n whotyped ` + SimMarker + ` 2>&1 | head -n 3`,
-	`sed -n '1,5p' /etc/os-release 2>&1 | head -n 5`,
-	`cd /tmp && wc -l ` + SimMarker + ` 2>&1 | tail -n 1`,
+		`cd /tmp && cat ` + marker + ` 2>&1 | head -n 5`,
+		`systemctl status --no-pager ssh 2>&1 | head -n 5 || true`,
+		`timeout 5 uname -a`,
+		`sed -n '1,20p' /etc/hostname`,
+		`git --no-pager --version 2>&1 | head -n 1`,
+		`cd /tmp && df -h . 2>&1 | tail -n 2`,
+		`timeout 5 ps -eo pid,comm 2>&1 | head -n 10`,
+		`cd /tmp && grep -n whotyped ` + marker + ` 2>&1 | head -n 3`,
+		`sed -n '1,5p' /etc/os-release 2>&1 | head -n 5`,
+		`cd /tmp && wc -l ` + marker + ` 2>&1 | tail -n 1`,
+	}
 }
 
 // humanCommands run inside one PTY session with human-like pauses.
@@ -88,7 +107,8 @@ func RunOnline(ctx context.Context, o Options) int {
 	user := targetUser(target)
 	start := time.Now()
 
-	banner(o.Stdout, scenario, target, o.Declared)
+	marker := newMarker()
+	banner(o.Stdout, scenario, target, o.Declared, marker)
 
 	var err error
 	switch scenario {
@@ -97,7 +117,7 @@ func RunOnline(ctx context.Context, o Options) int {
 	case "human-admin", "ansible":
 		err = runPTY(ctx, o, target)
 	case "claude-bash-over-ssh", "mcp-paramiko":
-		err = runExecChannels(ctx, o, target, scenario == "mcp-paramiko")
+		err = runExecChannels(ctx, o, target, marker, scenario == "mcp-paramiko")
 	default:
 		fmt.Fprintf(o.Stderr, "simulate: scenario %q has no online variant (use --offline)\n", scenario)
 		return ExitTimeout
@@ -123,7 +143,7 @@ func RunOnline(ctx context.Context, o Options) int {
 	}
 	fmt.Fprintf(o.Stdout, "\nwaiting up to %s for an alert about %q in %s ...\n", wait.Round(time.Second), user, o.AlertsPath)
 	best, code := waitForAlert(ctx, o, user, start, wait, benign)
-	cleanup(ctx, o, target, scenario)
+	cleanup(ctx, o, target, scenario, marker)
 	if best != nil {
 		fmt.Fprintln(o.Stdout)
 		printAlert(o.Stdout, *best, o.JSON)
@@ -145,7 +165,7 @@ func RunOnline(ctx context.Context, o Options) int {
 	return code
 }
 
-func banner(w io.Writer, scenario, target string, declared bool) {
+func banner(w io.Writer, scenario, target string, declared bool, marker string) {
 	fmt.Fprintln(w, "whotyped simulate (online)")
 	fmt.Fprintf(w, "  scenario %s, target %s\n", scenario, target)
 	switch scenario {
@@ -162,7 +182,7 @@ func banner(w io.Writer, scenario, target string, declared bool) {
 	if declared {
 		fmt.Fprintln(w, "  AI_AGENT=whotyped-simulate is sent, so the session should be classified declared_agent.")
 	}
-	fmt.Fprintln(w, "  Nothing is modified except "+SimMarker+", which is removed at the end.")
+	fmt.Fprintln(w, "  Nothing is modified except "+marker+", which is removed at the end.")
 	fmt.Fprintln(w)
 }
 
@@ -206,11 +226,12 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-func runExecChannels(ctx context.Context, o Options, target string, paramiko bool) error {
+func runExecChannels(ctx context.Context, o Options, target, marker string, paramiko bool) error {
 	ssh, err := sshPath()
 	if err != nil {
 		return err
 	}
+	agentCommands := agentCommandsFor(marker)
 	for i, cmd := range agentCommands {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -337,7 +358,7 @@ func waitForAlert(ctx context.Context, o Options, user string, start time.Time, 
 	}
 }
 
-func cleanup(ctx context.Context, o Options, target, scenario string) {
+func cleanup(ctx context.Context, o Options, target, scenario, marker string) {
 	if scenario != "claude-bash-over-ssh" && scenario != "mcp-paramiko" {
 		return
 	}
@@ -347,7 +368,7 @@ func cleanup(ctx context.Context, o Options, target, scenario string) {
 	}
 	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	_ = exec.CommandContext(cctx, ssh, sshArgs(o, target, false, "rm -f "+SimMarker)...).Run()
+	_ = exec.CommandContext(cctx, ssh, sshArgs(o, target, false, "rm -f "+marker)...).Run()
 }
 
 func printAlert(w io.Writer, a alert.Alert, asJSON bool) {

@@ -6,6 +6,60 @@ All notable changes to whotyped are recorded here. The format follows
 
 ## [Unreleased]
 
+### Security and hardening
+
+- Self-declaration no longer silences detection: a `declared_agent` track that
+  scores at alert or high also emits `agent_detected` / `agent_high` (class
+  kept) and `agent_ended`, so it reaches every sink. `AI_AGENT` is accepted
+  only from the session itself (accepted `SetEnv`, or a process attributed by
+  audit session id, by parent sshd pid, or as the creator of a local track);
+  processes placed on a track by user fallback record the value but do not
+  declare, and the claim is withdrawn when the declaring process is gone.
+- `Close session` (channel close) no longer closes the TCP connection in the
+  correlator; pooled and ControlMaster sessions stay one connection on one
+  fingerprint track. The post-auth "User child is on pid N" pid is indexed.
+- Allowlist profiles: the Ansible profile matches the exact command shapes
+  Ansible produces (anchored, with the `AnsiballZ` module run required); every
+  shipped profile carries a required anchor clause; the match ratio counts
+  SSH exec channels in its denominator; `rules validate` rejects a profile
+  that suppresses rhythm/pty/style with no users, src_cidrs, fingerprints,
+  required clause or banner clause; `check` and `rules validate` warn about
+  profiles that match any source.
+- Webhook errors never carry the URL path (the credential): `*url.Error` is
+  unwrapped to scheme+host plus the inner cause. Teams cards and the Slack
+  fallback text escape markdown.
+- Attacker-controlled strings (comm, exe, argv0, `AI_AGENT`, env markers)
+  are cleaned at ingestion: ANSI sequences stripped, control bytes replaced,
+  comm 64 / paths 256 / `AI_AGENT` 64 bytes of `[A-Za-z0-9._@:+-]`, else
+  `invalid-declaration`. auditd caps argv0/exe at 256 and comm at 64 bytes;
+  `auditd.Replay` flushes stale groups every 1000 lines; `Parser.Feed` no
+  longer copies its group list per line.
+- Freeze windows: any verdict at info or above violates (not only
+  `suspected_agent`), and `freeze_windows[].level` is honoured
+  (`alert.Freeze.Level`, default high).
+- Forced-command sessions (`command=` / `ForceCommand`) count as exec channels
+  with the logged command as text.
+- Pre-auth failures never create tracks or touch the per-user "most recent
+  track"; they count on an existing open track and in a bounded (1024) per-IP
+  LRU. A 10k-line brute force adds zero tracks.
+- `pty.none` counts only shell sessions: `ssh -tt host cmd` on every call no
+  longer cancels it (`Connection.PTYExecCount`, evidence notes the count).
+- Supply chain: every GitHub Action pinned to a commit SHA with a version
+  comment; Dependabot for actions and gomod weekly; CI checks `go mod tidy
+  -diff`; `gopkg.in/yaml.v3` is a direct requirement.
+- Race on the dropped-events counter fixed (`atomic.Int64`); `journalctl`
+  child gets a minimal environment (PATH, LC_ALL=C); the jsonfile sink refuses
+  symlinks and non-regular targets (O_NOFOLLOW on Linux); `check --fix`
+  creates `/etc/audit/rules.d` 0750; `simulate` uses a per-run random marker
+  path in `/tmp`; `readers.netconn.resolve` is `hostlist|none` (bool still
+  accepted) and `rules.auto_update: true` is rejected as not implemented;
+  provisional tracks absorbed by their keyed track release their dispatcher
+  memo (`Dispatcher.Forget`); the syslog sink is closed on shutdown;
+  `AF_NETLINK` dropped from the systemd unit; replay skips zero-timestamp
+  events with a counted warning.
+- Frozen contracts, additive only: `session.Connection.PTYExecCount`,
+  `session.ProcSample.Attributed`, `alert.Freeze.Level`.
+
 ### Added
 
 - `whotyped run`: daemon wiring readers (sshd log via journald or file, auditd

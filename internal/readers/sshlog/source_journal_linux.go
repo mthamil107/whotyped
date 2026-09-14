@@ -114,7 +114,10 @@ func (s *JournalSource) runOnce(ctx context.Context, out chan<- event.Event, use
 
 	cmd := exec.Command("journalctl", args...)
 	cmd.Stdin = nil
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	// A minimal environment: the child needs PATH to find its own helpers
+	// and a C locale for stable output. Nothing else of the daemon's
+	// environment (sink credentials in *_ENV variables, proxies) is passed.
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "LC_ALL=C"}
 	var stderr boundedBuffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()

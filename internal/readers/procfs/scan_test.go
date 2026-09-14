@@ -341,3 +341,39 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// TestScanHostileStrings: a process owner controls comm, exe, argv and its
+// own environment. A 100 KiB AI_AGENT and an ESC-laden comm must come out of
+// the scanner capped and printable, with the declaration rejected.
+func TestScanHostileStrings(t *testing.T) {
+	m := loadFixture(t, "local-agent")
+	huge := strings.Repeat("A", 100<<10)
+	m["4420/environ"] = &fstest.MapFile{Data: []byte("CLAUDECODE=1\x00AI_AGENT=" + huge + "\x00HOME=/home/alice\x00")}
+	evil := "ba\x1b[31msh\x1b[0m\r\n\x07"
+	m["4420/comm"] = &fstest.MapFile{Data: []byte(evil + "\n")}
+	m["4420/status"] = &fstest.MapFile{Data: []byte("Name:\t" + evil + "\nPPid:\t4411\nUid:\t1000\t1000\t1000\t1000\n")}
+	m["4420/cmdline"] = &fstest.MapFile{Data: []byte("/bin/bash\x00-c\x00" + strings.Repeat("x", 4096) + "\x1b]0;t\x07\x00")}
+	c := &clock{t: time.Date(2026, 9, 11, 14, 0, 0, 0, time.UTC)}
+	evs, _ := newScanner(m, c).Scan(nil)
+	e := byPID(evs)[4420]
+	if e.Kind != event.ProcSeen {
+		t.Fatalf("4420 not emitted: %+v", evs)
+	}
+	if got := e.Field("env.AI_AGENT"); got != "invalid-declaration" {
+		t.Errorf("AI_AGENT = %q (len %d)", got, len(got))
+	}
+	if got := e.Field("comm"); got != "bash???" || len(got) > 64 {
+		t.Errorf("comm = %q", got)
+	}
+	if got := e.Field("cmd"); len(got) > maxCmdLen || strings.ContainsAny(got, "\x1b\x07\r\n") {
+		t.Errorf("cmd len %d or control bytes present", len(got))
+	}
+	for k, v := range e.Fields {
+		if strings.ContainsAny(v, "\x1b\r\n\x07") {
+			t.Errorf("field %s carries control bytes: %q", k, v)
+		}
+		if len(v) > 1024 {
+			t.Errorf("field %s is %d bytes", k, len(v))
+		}
+	}
+}

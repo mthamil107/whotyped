@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/whotyped/whotyped/internal/alert"
 	"github.com/whotyped/whotyped/internal/config"
@@ -113,5 +115,39 @@ func TestRunRejectsBadRulesDir(t *testing.T) {
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err == nil || !strings.Contains(err.Error(), ErrConfig.Error()) {
 		t.Fatalf("expected ErrConfig, got %v", err)
+	}
+}
+
+// TestRunLiveShutsDownCleanly starts the live loop with a file source (the
+// only reader that runs on every OS) and cancels it: Run must return within
+// two seconds with no error, having stopped the reader and flushed state.
+func TestRunLiveShutsDownCleanly(t *testing.T) {
+	cfg := config.Default()
+	cfg.Host = "test-host"
+	cfg.StateDir = t.TempDir()
+	cfg.Readers.SSHLog = config.SSHLog{Source: "file", File: filepath.Join("..", "..", "testdata", "sshlog", "openssh-9.6-ubuntu2404-verbose.log")}
+	cfg.Readers.Auditd.Enabled = false
+	cfg.Readers.Procfs.Enabled = false
+	cfg.Readers.Netconn.Enabled = false
+	cfg.Sinks.JSONFile.Path = filepath.Join(cfg.StateDir, "alerts.jsonl")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, cfg, Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	}()
+	// Give the reader a moment to open the file, then stop everything.
+	time.Sleep(300 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run returned %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runLive did not return within 2s of cancel")
+	}
+	if _, err := os.Stat(filepath.Join(cfg.StateDir, "state.json")); err != nil {
+		t.Fatalf("state not persisted on shutdown: %v", err)
 	}
 }

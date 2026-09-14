@@ -17,7 +17,10 @@ const (
 )
 
 // PTY looks at terminal allocation: tools run exec channels without a PTY,
-// humans sit in an interactive shell for minutes.
+// humans sit in an interactive shell for minutes. Only shell sessions count
+// as PTY sessions: `ssh -tt host cmd` allocates a terminal for a one-command
+// channel, which is still not a person at a prompt, so it neither cancels
+// pty.none nor starts the pty.interactive clock.
 type PTY struct{}
 
 // ID implements Detector.
@@ -32,10 +35,11 @@ func (PTY) Evaluate(t *session.Track, _ *rules.Pack, now time.Time) []Clue {
 	execs := t.ExecChannels()
 	ptys := t.PTYSessions()
 	if execs >= minExecSessionsForNoPTY && ptys == 0 {
-		out = append(out, Clue{
-			ID: "pty.none", Category: CatPTY, Weight: WeightPTYNone, TS: now,
-			Evidence: fmt.Sprintf("0/%d sessions allocated a PTY", execs),
-		})
+		ev := fmt.Sprintf("0/%d sessions allocated a PTY", execs)
+		if forced := ptyExecChannels(t); forced > 0 {
+			ev = fmt.Sprintf("0/%d sessions opened an interactive shell; %d exec channels forced a PTY (-tt)", execs, forced)
+		}
+		out = append(out, Clue{ID: "pty.none", Category: CatPTY, Weight: WeightPTYNone, TS: now, Evidence: ev})
 	}
 	var longest time.Duration
 	for _, c := range t.Connections {
@@ -57,4 +61,13 @@ func (PTY) Evaluate(t *session.Track, _ *rules.Pack, now time.Time) []Clue {
 		})
 	}
 	return out
+}
+
+// ptyExecChannels sums the exec channels that requested a terminal (-tt).
+func ptyExecChannels(t *session.Track) int {
+	n := 0
+	for _, c := range t.Connections {
+		n += c.PTYExecCount
+	}
+	return n
 }

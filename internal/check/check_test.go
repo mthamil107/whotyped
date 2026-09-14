@@ -228,6 +228,19 @@ func TestRunUnknownProfileWarns(t *testing.T) {
 	if r := byName(rep)["rules.profiles"]; r.Status != StatusWarn || !strings.Contains(r.Detail, "nope") {
 		t.Errorf("rules.profiles = %+v", r)
 	}
+	// The shipped ansible profile has no users/src_cidrs: an enabled profile
+	// that matches any source is reported, and only enabled ones are.
+	r := byName(rep)["rules.profiles.scope"]
+	if r.Status != StatusWarn || !strings.Contains(r.Detail, "profile ansible matches any source; consider users/src_cidrs") {
+		t.Errorf("rules.profiles.scope = %+v", r)
+	}
+	if strings.Contains(r.Detail, "vscode-remote") {
+		t.Errorf("disabled profile reported: %s", r.Detail)
+	}
+	cfg.Allowlist.ProfilesEnabled = nil
+	if r := byName(Run(Options{Config: cfg, FS: fstest.MapFS{}}))["rules.profiles.scope"]; r.Name != "" {
+		t.Errorf("no profiles enabled but scope warning emitted: %+v", r)
+	}
 }
 
 func TestRunWithoutPlatformProbes(t *testing.T) {

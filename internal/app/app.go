@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/whotyped/whotyped/internal/alert"
@@ -228,7 +229,7 @@ type pipeline struct {
 
 	audit   *auditd.Reader // for Position() in the state snapshot; nil when disabled
 	closers []func()
-	dropped int64
+	dropped atomic.Int64 // incremented by the forwarder goroutine, read by the main loop
 
 	persist   bool // state.json is read and written
 	statePath string
@@ -249,7 +250,7 @@ func newPipeline(cfg config.Config, opts Options, pack *rules.Pack, log *slog.Lo
 	p.statePath = filepath.Join(cfg.StateDir, stateFile)
 
 	window := cfg.Scoring.Window.Duration()
-	p.corr = session.New(session.Options{Window: window, Now: p.clk.Now})
+	p.corr = session.New(session.Options{Window: window, Now: p.clk.Now, OnDrop: p.forget})
 	sc := score.DefaultConfig()
 	sc.Thresholds = cfg.Scoring.Thresholds
 	sc.RequireTwoCategories = cfg.Scoring.RequireTwoCategories
@@ -355,6 +356,9 @@ func (p *pipeline) registerSinks() {
 			p.log.Warn("syslog sink disabled", "err", err)
 		} else {
 			p.disp.Register(sl, score.ParseLevel(s.Syslog.MinLevel), 256)
+			if c, ok := sl.(io.Closer); ok {
+				p.closers = append(p.closers, func() { _ = c.Close() })
+			}
 		}
 	}
 	if s.Webhook.Enabled {
@@ -456,7 +460,17 @@ func (p *pipeline) maintain(now time.Time) {
 	p.std.SetSinkStats(stats)
 }
 
-// freezeFor maps the active config freeze window (if any) to the alert form.
+// forget is the correlator's OnDrop hook: a track that vanished without
+// ending (a provisional track absorbed into its keyed one) must not linger
+// in the dirty set, where flushDirty would score and alert on it, nor keep
+// its dedupe memo in the dispatcher.
+func (p *pipeline) forget(id string) {
+	delete(p.dirty, id)
+	p.disp.Forget(id)
+}
+
+// freezeFor maps the active config freeze window (if any) to the alert form,
+// carrying the window's configured violation level.
 func (p *pipeline) freezeFor(now time.Time, v score.Verdict) *alert.Freeze {
 	w := p.cfg.ActiveFreeze(now)
 	if w == nil {
@@ -465,7 +479,7 @@ func (p *pipeline) freezeFor(now time.Time, v score.Verdict) *alert.Freeze {
 	if v.Class == score.ClassDeclared && !w.IncludeDeclared {
 		return nil
 	}
-	return &alert.Freeze{Name: w.Name, Until: freezeUntil(w, now)}
+	return &alert.Freeze{Name: w.Name, Until: freezeUntil(w, now), Level: score.ParseLevel(w.Level)}
 }
 
 // freezeUntil computes the end of the occurrence covering now.
@@ -517,9 +531,12 @@ func (p *pipeline) runReplay(path string) error {
 		return fmt.Errorf("replay: %w", err)
 	}
 	defer f.Close()
-	events, err := score.ReadEvents(f)
+	events, skipped, err := score.ReadEventsSkipped(f)
 	if err != nil {
 		return fmt.Errorf("replay: %w", err)
+	}
+	if skipped > 0 {
+		p.log.Warn("replay: events without a timestamp skipped", "skipped", skipped)
 	}
 	p.log.Info("replaying events", "file", path, "events", len(events))
 	p.feed(events)
@@ -635,12 +652,18 @@ func (p *pipeline) buildReaders(auditOffset int64, auditInode uint64) []readers.
 		list = append(list, p.audit)
 	}
 	if r.Procfs.Enabled {
-		list = append(list, procfs.New(p.pack, procfs.Options{
+		po := procfs.Options{
 			Interval:    r.Procfs.Interval.Duration(),
 			NetInterval: r.Netconn.Interval.Duration(),
 			NoEnviron:   !r.Procfs.ReadEnviron,
 			NoNet:       !r.Netconn.Enabled, // readers.netconn.enabled: false disables ScanNet and DNS
-		}))
+		}
+		if r.Netconn.Resolve == config.ResolveNone {
+			// readers.netconn.resolve: none -> never perform DNS; only
+			// literal-IP and CIDR api_hosts rules can match.
+			po.Resolver = procfs.MapResolver{}
+		}
+		list = append(list, procfs.New(p.pack, po))
 	}
 	return list
 }
@@ -680,14 +703,14 @@ func (p *pipeline) runLive(ctx context.Context) error {
 				}
 				select {
 				case <-queue:
-					p.dropped++
+					p.dropped.Add(1)
 					p.std.EventsDroppedTotal.Inc()
 				default:
 				}
 				select {
 				case queue <- ev:
 				default:
-					p.dropped++
+					p.dropped.Add(1)
 					p.std.EventsDroppedTotal.Inc()
 				}
 			}
@@ -759,6 +782,6 @@ drain:
 	p.flushDirty(p.clk.Now(), true)
 	p.maintain(p.clk.Now())
 	p.saveState()
-	p.log.Info("whotyped stopped", "dropped_events", p.dropped, "tracks", len(p.corr.Tracks()))
+	p.log.Info("whotyped stopped", "dropped_events", p.dropped.Load(), "tracks", len(p.corr.Tracks()))
 	return runErr
 }

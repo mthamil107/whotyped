@@ -33,6 +33,9 @@ type Window struct {
 type Freeze struct {
 	Name  string    `json:"name"`
 	Until time.Time `json:"until"`
+	// Level is the configured freeze_windows[].level for the violation
+	// alert; empty means high. Additive field.
+	Level score.Level `json:"level,omitempty"`
 }
 
 // Alert is one line in alerts.jsonl and one message to every sink.

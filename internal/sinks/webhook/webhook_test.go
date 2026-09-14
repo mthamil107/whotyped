@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -298,5 +299,91 @@ func TestAllFormatsRender(t *testing.T) {
 	}
 	if New("http://x", "JSON", 0, nil).Name() != "webhook:generic" || New("http://x", "", 0, nil).Name() != "webhook:generic" {
 		t.Error("New must normalise json/empty to generic")
+	}
+}
+
+// TestErrorsNeverLeakWebhookPath: transport failures are wrapped by
+// net/http in a *url.Error whose Error() prints the whole URL; the path of
+// a Slack/Teams/Discord webhook is the credential.
+func TestErrorsNeverLeakWebhookPath(t *testing.T) {
+	// A listener that is closed immediately gives a deterministic refused
+	// connection on a port nobody else holds.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+	secret := "T000/B000/xoxb-SECRET-TOKEN"
+	for _, format := range []string{FormatSlack, FormatTeams, FormatDiscord, FormatGeneric} {
+		s := New("http://"+addr+"/services/"+secret+"?token=q", format, time.Second, nil)
+		err := s.Send(context.Background(), sample())
+		if err == nil {
+			t.Fatalf("%s: expected an error", format)
+		}
+		msg := err.Error()
+		if strings.Contains(msg, secret) || strings.Contains(msg, "/services") || strings.Contains(msg, "token=q") {
+			t.Fatalf("%s: error leaks the URL: %s", format, msg)
+		}
+		if !strings.Contains(msg, "http://"+addr) || !errors.Is(err, alert.ErrTransient) {
+			t.Fatalf("%s: error should name the host and be transient: %s", format, msg)
+		}
+	}
+	// A context deadline mid-request goes the same way.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(500 * time.Millisecond):
+		}
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	err = New(srv.URL+"/hooks/"+secret, FormatSlack, 200*time.Millisecond, nil).Send(ctx, sample())
+	if err == nil || strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), "/hooks") {
+		t.Fatalf("timeout error leaks: %v", err)
+	}
+	// An unparsable URL is reported without echoing it.
+	err = New("http://[::1]:namedport/"+secret, FormatSlack, time.Second, nil).Send(context.Background(), sample())
+	if err == nil || strings.Contains(err.Error(), secret) {
+		t.Fatalf("bad url error leaks: %v", err)
+	}
+}
+
+// TestChatMarkdownEscaped: attacker-controlled names (comm, AI_AGENT) reach
+// the cards; markdown in them must render as text.
+func TestChatMarkdownEscaped(t *testing.T) {
+	a := sample()
+	a.Agent = "*urgent*_[click](https://evil.example)`code`#1~"
+	a.User = "<@channel>&*"
+	a.Reasons[0].Evidence = "comm [x](y) *bold*"
+	teams, err := Payload(FormatTeams, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := string(teams)
+	for _, raw := range []string{`[click](https://evil.example)`, "*urgent*", "`code`#1", "[x](y)"} {
+		if strings.Contains(ts, raw) {
+			t.Errorf("teams card carries unescaped %q", raw)
+		}
+	}
+	// JSON doubles every backslash: an escaped `*` is `\\*` on the wire.
+	for _, esc := range []string{"\\\\*urgent\\\\*", "\\\\[click\\\\]\\\\(https://evil.example\\\\)", "\\\\#1", "\\\\`code\\\\`"} {
+		if !strings.Contains(ts, esc) {
+			t.Errorf("teams escaping missing %q in: %s", esc, ts)
+		}
+	}
+	slack, err := Payload(FormatSlack, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var top struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(slack, &top); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(top.Text, "<@channel>") || !strings.Contains(top.Text, "&lt;@channel&gt;&amp;*") {
+		t.Errorf("slack fallback text not escaped: %q", top.Text)
 	}
 }

@@ -1,9 +1,12 @@
 package session
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/whotyped/whotyped/internal/clean"
 	"github.com/whotyped/whotyped/internal/event"
 )
 
@@ -208,14 +211,22 @@ func TestProcSeenAttributionAndLocalTrack(t *testing.T) {
 	if len(tr.Procs) != 1 || !tr.Procs[0].LastSeen.Equal(at(50)) || !tr.Procs[0].TS.Equal(at(30)) {
 		t.Fatalf("rescan: %+v", tr.Procs)
 	}
-	// Child with env, no ses: by user -> most recent track.
+	// Child with env, no ses, no known parent: by user -> most recent track,
+	// recorded but NOT attributed, so its AI_AGENT is not a declaration.
 	ch := ev(event.ProcSeen, at(51), "comm", "bash", "cmd", "bash -c git status", "env.CLAUDECODE", "1", "env.AI_AGENT", "claude-code")
 	ch.PID, ch.User = 4412, "alice"
 	if got, _ := c.Apply(ch); got != tr {
 		t.Fatal("proc.seen by user failed")
 	}
-	if tr.DeclaredAgent != "claude-code" || tr.Procs[1].Env["CLAUDECODE"] != "1" {
-		t.Fatalf("env/declared: %+v declared=%q", tr.Procs[1].Env, tr.DeclaredAgent)
+	if tr.DeclaredAgent != "" || tr.Procs[1].Attributed || tr.Procs[1].Env["CLAUDECODE"] != "1" || tr.Procs[1].Env["AI_AGENT"] != "claude-code" {
+		t.Fatalf("env/declared: %+v declared=%q", tr.Procs[1], tr.DeclaredAgent)
+	}
+	// The same child whose parent is the connection's sshd pid is attributed
+	// and declares.
+	ch.Set("ppid", "4410")
+	c.Apply(ch)
+	if tr.DeclaredAgent != "claude-code" || !tr.Procs[1].Attributed {
+		t.Fatalf("ppid attribution: %+v declared=%q", tr.Procs[1], tr.DeclaredAgent)
 	}
 	// net.conn by pid of a known process is attributed.
 	nc := ev(event.NetConn, at(52), "dst", "160.79.104.10", "dst_port", "443", "host", "api.anthropic.com")
@@ -266,9 +277,51 @@ func TestAuthFailCountsOnTrack(t *testing.T) {
 	if got != tr || tr.AuthFails != 1 {
 		t.Fatalf("auth_fail: %v fails=%d", got, tr.AuthFails)
 	}
-	other, _ := c.Apply(sshEv(event.SSHAuthFail, at(2), "root", "10.9.9.9", 1, 4430))
-	if other == tr || other.AuthFails != 1 || other.Key.Fingerprint != "-" {
-		t.Fatalf("auth_fail new track: %v", other)
+	if !tr.LastSeen.Equal(at(0)) {
+		t.Fatalf("auth_fail touched the track: last_seen=%v", tr.LastSeen)
+	}
+	// Failures for users/sources without an open track never create one.
+	if other, _ := c.Apply(sshEv(event.SSHAuthFail, at(2), "root", "10.9.9.9", 1, 4430)); other != nil {
+		t.Fatalf("auth_fail created a track: %v", other)
+	}
+	if other, _ := c.Apply(sshEv(event.SSHAuthFail, at(3), "alice", "10.0.0.5", 1, 4431, "invalid_user", "true")); other != nil {
+		t.Fatal("invalid user counted on a real track")
+	}
+	if other, _ := c.Apply(sshEv(event.SSHAuthFail, at(4), "", "10.9.9.9", 1, 4432)); other != nil {
+		t.Fatal("empty user produced a track")
+	}
+	if len(c.Tracks()) != 1 || c.AuthFailsByIP("10.9.9.9") != 2 || c.AuthFailsByIP("10.0.0.5") != 2 {
+		t.Fatalf("tracks=%d fails=%d/%d", len(c.Tracks()), c.AuthFailsByIP("10.9.9.9"), c.AuthFailsByIP("10.0.0.5"))
+	}
+}
+
+// TestAuthFailFloodCreatesNoTracks replays a brute force: 10k failures from
+// 5k sources against invalid and valid names must leave the track table
+// untouched and the per-IP table at its cap.
+func TestAuthFailFloodCreatesNoTracks(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "alice", "10.0.0.5", 51234, 4410, "fp", fp))
+	for i := 0; i < 10000; i++ {
+		ip := "203.0.113." + strconv.Itoa(i%250) + "." + strconv.Itoa(i/250)
+		e := sshEv(event.SSHAuthFail, at(float64(i)/100), "admin", ip, 40000+i%20000, 5000+i, "reason", "failed")
+		if i%2 == 1 {
+			e.User = "alice" // valid name, wrong source: still no track
+		}
+		if i%3 == 0 {
+			e.Set("invalid_user", "true")
+		}
+		if got, _ := c.Apply(e); got != nil {
+			t.Fatalf("failure %d attributed to %v", i, got)
+		}
+	}
+	if n := len(c.Tracks()); n != 1 {
+		t.Fatalf("flood created %d tracks", n-1)
+	}
+	if c.FailIPCount() > maxFailIPs {
+		t.Fatalf("fail table %d > cap %d", c.FailIPCount(), maxFailIPs)
+	}
+	if tr.AuthFails != 0 || c.userLast["alice"] != tr || c.userLast["admin"] != nil {
+		t.Fatalf("flood poisoned state: fails=%d userLast=%v", tr.AuthFails, c.userLast)
 	}
 }
 
@@ -356,3 +409,167 @@ func TestZeroTimestampUsesClock(t *testing.T) {
 
 // withPID is a test convenience for lines that only carry the sshd child pid.
 func withPID(e event.Event, pid int) event.Event { e.PID = pid; return e }
+
+// TestChannelCloseKeepsConnectionOpen: "Close session: user ... id N" ends
+// one channel, not the connection. A pooled connection running many exec
+// channels must stay one connection on one track with its fingerprint.
+func TestChannelCloseKeepsConnectionOpen(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "alice", "10.0.0.5", 60122, 2210, "method", "publickey", "fp", fp))
+	c.Apply(withPID(ev(event.SSHPAMOpen, at(0.1), "note", "user_child", "child_pid", "2216"), 2210))
+	for i := 0; i < 5; i++ {
+		got, _ := c.Apply(sshEv(event.SSHSessionStart, at(1+float64(i)), "alice", "10.0.0.5", 60122, 2216, "stype", "command", "chan", "0"))
+		if got != tr {
+			t.Fatalf("exec %d joined %v", i, got)
+		}
+		if got, _ := c.Apply(sshEv(event.SSHDisconnect, at(1.5+float64(i)), "alice", "10.0.0.5", 60122, 2216, "scope", "channel", "chan", "0")); got != tr {
+			t.Fatalf("channel close %d returned %v", i, got)
+		}
+		if !tr.Connections[0].Closed.IsZero() {
+			t.Fatalf("channel close %d closed the connection", i)
+		}
+	}
+	if len(c.Tracks()) != 1 || len(tr.Connections) != 1 || tr.Connections[0].ExecCount != 5 || len(tr.Execs) != 5 || tr.Key.Fingerprint != fp {
+		t.Fatalf("after channel closes: %s conn=%+v", tr, *tr.Connections[0])
+	}
+	// "Received disconnect" carries only ip:port and the user-child pid.
+	rd := ev(event.SSHDisconnect, at(10), "scope", "connection", "reason", "received_disconnect")
+	rd.PID, rd.SrcIP, rd.SrcPort = 2216, "10.0.0.5", 60122
+	c.Apply(rd)
+	if tr.Connections[0].Closed.IsZero() || c.byPID[2216] != nil || c.byPID[2210] != nil {
+		t.Fatalf("connection close by child pid failed: closed=%v byPID=%v", tr.Connections[0].Closed, c.byPID)
+	}
+	// PAM close after the connection is gone finds nothing and creates nothing.
+	pc := ev(event.SSHDisconnect, at(10.1), "scope", "pam")
+	pc.PID, pc.User = 2210, "alice"
+	if got, _ := c.Apply(pc); got != nil || len(c.Tracks()) != 1 {
+		t.Fatalf("pam close: %v tracks=%d", got, len(c.Tracks()))
+	}
+}
+
+func TestPAMCloseEndsStillOpenConnection(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "alice", "10.0.0.5", 60122, 2210, "fp", fp))
+	pc := ev(event.SSHDisconnect, at(5), "scope", "pam")
+	pc.PID, pc.User = 2210, "alice"
+	if got, _ := c.Apply(pc); got != tr || tr.Connections[0].Closed.IsZero() {
+		t.Fatalf("pam close did not end the connection: %v", got)
+	}
+}
+
+func TestForcedCommandIsAnExecChannel(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "backup", "10.0.0.8", 40000, 900, "fp", fp))
+	c.Apply(sshEv(event.SSHSessionStart, at(1), "backup", "10.0.0.8", 40000, 900,
+		"stype", "forced-command", "forced_by", "key-option", "cmd", "borg serve --restrict-to-path /srv/backup"))
+	if tr.Connections[0].ExecCount != 1 || len(tr.Execs) != 1 || tr.Execs[0].Origin != "sshlog" || tr.Execs[0].Cmd != "borg serve --restrict-to-path /srv/backup" {
+		t.Fatalf("forced command: conn=%+v execs=%+v", *tr.Connections[0], tr.Execs)
+	}
+	if tr.ExecChannels() != 1 || tr.PTYSessions() != 0 {
+		t.Fatalf("channels=%d ptys=%d", tr.ExecChannels(), tr.PTYSessions())
+	}
+}
+
+func TestPTYOnExecChannelDoesNotCountAsShell(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "alice", "10.0.0.5", 51234, 4410, "fp", fp))
+	for i := 0; i < 3; i++ {
+		c.Apply(sshEv(event.SSHSessionStart, at(1+float64(i)), "alice", "10.0.0.5", 51234, 4410, "stype", "command", "tty", "pts/2"))
+	}
+	conn := tr.Connections[0]
+	if conn.PTY || conn.PTYExecCount != 3 || conn.ExecCount != 3 || tr.PTYSessions() != 0 {
+		t.Fatalf("-tt exec channels: %+v", *conn)
+	}
+	c.Apply(sshEv(event.SSHSessionStart, at(10), "alice", "10.0.0.5", 51234, 4410, "stype", "shell", "tty", "pts/3"))
+	if !conn.PTY || conn.ShellCount != 1 || tr.PTYSessions() != 1 {
+		t.Fatalf("shell pty: %+v", *conn)
+	}
+}
+
+// TestDeclarationWithdrawnWhenProcessGone: a declaring process that exits
+// takes its claim with it unless a connection or another attributed process
+// still declares.
+func TestDeclarationWithdrawnWhenProcessGone(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "alice", "10.0.0.5", 51234, 4410, "fp", fp))
+	login := ev(event.AuditLogin, at(0.3), "acct", "alice", "addr", "10.0.0.5")
+	login.PID, login.Ses = 4410, 7
+	c.Apply(login)
+
+	p1 := ev(event.ProcSeen, at(1), "comm", "bash", "env.AI_AGENT", "claude-code")
+	p1.PID, p1.Ses, p1.User = 5001, 7, "alice"
+	p2 := ev(event.ProcSeen, at(2), "comm", "node", "env.AI_AGENT", "claude-code")
+	p2.PID, p2.Ses, p2.User = 5002, 7, "alice"
+	c.Apply(p1)
+	c.Apply(p2)
+	if tr.DeclaredAgent != "claude-code" {
+		t.Fatalf("declared=%q", tr.DeclaredAgent)
+	}
+	g := ev(event.ProcGone, at(3))
+	g.PID = 5001
+	c.Apply(g)
+	if tr.DeclaredAgent != "claude-code" {
+		t.Fatal("second declaring process should keep the claim")
+	}
+	g.PID = 5002
+	c.Apply(g)
+	if tr.DeclaredAgent != "" {
+		t.Fatalf("claim survived its processes: %q", tr.DeclaredAgent)
+	}
+	// Expire's ProcTTL trim withdraws it too.
+	c.Apply(p1)
+	if tr.DeclaredAgent != "claude-code" {
+		t.Fatal("re-declare")
+	}
+	c.Expire(at(1 + 61))
+	if len(tr.Procs) != 0 || tr.DeclaredAgent != "" {
+		t.Fatalf("after ttl: procs=%d declared=%q", len(tr.Procs), tr.DeclaredAgent)
+	}
+	// A connection-level declaration outlives the processes.
+	c.Apply(withPID(ev(event.SSHEnv, at(70), "name", "AI_AGENT", "value", "cursor-cli"), 4410))
+	c.Apply(p1)
+	g.PID = 5001
+	c.Apply(g)
+	if tr.DeclaredAgent != "cursor-cli" {
+		t.Fatalf("connection declaration lost: %q", tr.DeclaredAgent)
+	}
+}
+
+func TestInvalidDeclarationsAreRecordedNotAccepted(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "alice", "10.0.0.5", 51234, 4410, "fp", fp))
+	c.Apply(withPID(ev(event.SSHEnv, at(1), "name", "AI_AGENT", "value", "evil\x1b[31m; rm -rf /"), 4410))
+	if tr.DeclaredAgent != "" || tr.Connections[0].DeclaredAgent != "" {
+		t.Fatalf("junk SetEnv accepted: %q", tr.DeclaredAgent)
+	}
+	huge := strings.Repeat("A", 100<<10)
+	ps := ev(event.ProcSeen, at(2), "comm", "ba\x1b[0msh\n", "exe", "/usr/bin/\x07bash", "env.AI_AGENT", huge, "agent", "x")
+	ps.PID, ps.User = 5000, "alice"
+	ps.Set("ppid", "4410")
+	c.Apply(ps)
+	p := tr.Procs[0]
+	if p.Env["AI_AGENT"] != clean.InvalidDeclaration || tr.DeclaredAgent != "" || !p.Attributed {
+		t.Fatalf("100 KiB AI_AGENT: env=%q declared=%q attributed=%v", p.Env["AI_AGENT"], tr.DeclaredAgent, p.Attributed)
+	}
+	if p.Comm != "bash?" || p.Exe != "/usr/bin/?bash" || len(p.Comm) > clean.MaxComm {
+		t.Fatalf("comm/exe not cleaned: %q %q", p.Comm, p.Exe)
+	}
+}
+
+func TestOnDropFiresForAbsorbedProvisionalTrack(t *testing.T) {
+	var dropped []string
+	c := New(Options{OnDrop: func(id string) { dropped = append(dropped, id) }})
+	// A session line before Accepted creates a provisional (fp "-") track.
+	prov, _ := c.Apply(sshEv(event.SSHSessionStart, at(0), "alice", "10.0.0.5", 51234, 4410, "stype", "command"))
+	if prov == nil || prov.Key.Fingerprint != "-" {
+		t.Fatalf("provisional: %v", prov)
+	}
+	real, _ := c.Apply(sshEv(event.SSHAuthOK, at(0.1), "alice", "10.0.0.5", 51234, 4410, "fp", fp))
+	if real == prov || len(c.Tracks()) != 1 || len(dropped) != 1 || dropped[0] != prov.ID {
+		t.Fatalf("absorb: real=%v tracks=%d dropped=%v", real, len(c.Tracks()), dropped)
+	}
+	c.Expire(at(3600))
+	if len(dropped) != 2 || dropped[1] != real.ID {
+		t.Fatalf("expire drop: %v", dropped)
+	}
+}

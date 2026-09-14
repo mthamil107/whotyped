@@ -238,3 +238,31 @@ func TestWebhookFormatsAndHashSalt(t *testing.T) {
 		t.Fatalf("privacy parse: %+v %v", cfg.Privacy, err)
 	}
 }
+
+// TestDeadKeysAreRealKeys: readers.netconn.resolve selects DNS use (and
+// accepts the old boolean), and rules.auto_update: true is rejected instead
+// of silently doing nothing.
+func TestDeadKeysAreRealKeys(t *testing.T) {
+	if got := Default().Readers.Netconn.Resolve; got != ResolveHostList {
+		t.Fatalf("default resolve %q", got)
+	}
+	for in, want := range map[string]Resolve{"none": ResolveNone, "hostlist": ResolveHostList, "false": ResolveNone, "true": ResolveHostList} {
+		cfg, err := Parse(strings.NewReader("readers:\n  netconn:\n    resolve: " + in + "\n"))
+		if err != nil || cfg.Readers.Netconn.Resolve != want {
+			t.Errorf("resolve %s: got %q err %v", in, cfg.Readers.Netconn.Resolve, err)
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("resolve %s: validate: %v", in, err)
+		}
+	}
+	if _, err := Parse(strings.NewReader("readers:\n  netconn:\n    resolve: reverse\n")); err == nil || !strings.Contains(err.Error(), "hostlist|none") {
+		t.Errorf("bad resolve accepted: %v", err)
+	}
+	cfg, err := Parse(strings.NewReader("rules:\n  auto_update: true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "auto_update: not implemented") {
+		t.Errorf("auto_update accepted: %v", err)
+	}
+}

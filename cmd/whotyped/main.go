@@ -378,6 +378,9 @@ func rulesValidate(dirs []string, stdout, stderr io.Writer) int {
 	for _, e := range errs {
 		fmt.Fprintln(stderr, "  -", e)
 	}
+	for _, w := range rules.Lint(pack) {
+		fmt.Fprintln(stderr, "  - warning:", w)
+	}
 	src := "embedded defaults"
 	if len(dirs) > 0 {
 		src += " + " + strings.Join(dirs, ", ")

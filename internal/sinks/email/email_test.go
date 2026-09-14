@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/textproto"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -271,5 +272,38 @@ func TestSMTPRequiresStartTLSByDefault(t *testing.T) {
 	err = s.Send(context.Background(), sample())
 	if err == nil || errors.Is(err, alert.ErrTransient) || !strings.Contains(err.Error(), "STARTTLS") {
 		t.Fatalf("expected permanent STARTTLS error, got %v", err)
+	}
+}
+
+// TestErrorsNeverCarryCredentials: a failed SMTP conversation is logged by
+// the dispatcher; the error must name the server (host:port, operator
+// config) and the step, never the password or username from the environment.
+func TestErrorsNeverCarryCredentials(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, portStr, _ := net.SplitHostPort(ln.Addr().String())
+	ln.Close()
+	port, _ := strconv.Atoi(portStr)
+	t.Setenv("WT_TEST_SMTP_USER", "alerts@example.test")
+	t.Setenv("WT_TEST_SMTP_PASS", "hunter2-SECRET")
+	s, err := New(Options{Host: host, Port: port, From: "a@b", To: []string{"c@d"},
+		UsernameEnv: "WT_TEST_SMTP_USER", PasswordEnv: "WT_TEST_SMTP_PASS", Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Send(context.Background(), alert.Alert{Schema: alert.Schema, Event: alert.EvDetected, Level: score.LevelAlert})
+	if err == nil {
+		t.Fatal("expected a dial error")
+	}
+	msg := err.Error()
+	for _, secret := range []string{"hunter2-SECRET", "alerts@example.test", "WT_TEST_SMTP_PASS"} {
+		if strings.Contains(msg, secret) {
+			t.Fatalf("error leaks %q: %s", secret, msg)
+		}
+	}
+	if !strings.Contains(msg, "email: dial "+ln.Addr().String()) || !errors.Is(err, alert.ErrTransient) {
+		t.Fatalf("error should name the server and be transient: %s", msg)
 	}
 }

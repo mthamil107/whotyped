@@ -229,10 +229,26 @@ func (r *runner) checkRules() {
 		pack.Version, len(pack.Agents), len(pack.Banners), len(pack.Styles), len(pack.APIHosts), len(pack.Profiles),
 		strings.Join(dirs, ", ")))
 	if r.f.cfg != nil {
+		enabled := map[string]bool{}
 		for _, id := range r.f.cfg.Allowlist.ProfilesEnabled {
+			enabled[id] = true
 			if pack.ProfileByID(id) == nil {
 				r.warn("rules.profiles", fmt.Sprintf("allowlist.profiles_enabled names unknown profile %q", id), "check the id against rules/allowlist.yaml")
 			}
+		}
+		// A profile that suppresses behaviour clues for any source is a
+		// policy hole, not a policy: report every enabled one still lacking
+		// users/src_cidrs/fingerprints.
+		var loose []string
+		for _, w := range rules.Lint(pack) {
+			id, _, _ := strings.Cut(strings.TrimPrefix(w, "profile "), " ")
+			if enabled[id] {
+				loose = append(loose, w)
+			}
+		}
+		if len(loose) > 0 {
+			r.warn("rules.profiles.scope", strings.Join(loose, "; "),
+				"add users or src_cidrs to each profile in an override file under rules.dirs")
 		}
 	}
 }

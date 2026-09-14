@@ -3,40 +3,65 @@
 # Profiles are defined here and switched on per host in config
 # (allowlist.profiles_enabled). A profile matches a track when all of the
 # populated `match` fields agree: users / src_cidrs / fingerprints (empty =
-# any) and at least `min_match_ratio` of the track's exec channels satisfy
-# one of the `any_of` clauses. A clause marked `required: true` must in
-# addition be satisfied by at least one exec channel on its own, so a
-# generic pattern (git polling) can fill the ratio without being enough by
-# itself. Matching profiles zero the listed clue ids, id prefixes
-# (`style.pager_guard`) or whole categories and optionally cap the score.
-# Profiles can never
-# suppress process, flags or identity clues (proc.*, env.ai_agent): an AI
-# agent that runs inside an allowlisted automation is still an AI agent.
+# any) and at least `min_match_ratio` of the track's commands satisfy one of
+# the `any_of` clauses. The ratio's denominator is the larger of the
+# text-bearing commands (auditd) and the SSH exec channels, so the audit
+# children one channel spawns cannot outvote the channels. A clause marked
+# `required: true` must in addition be satisfied by at least one command on
+# its own, so a generic pattern (git polling) can fill the ratio without
+# being enough by itself. Matching profiles zero the listed clue ids, id
+# prefixes (`style.pager_guard`) or whole categories and optionally cap the
+# score. Profiles can never suppress process, flags or identity clues
+# (proc.*, env.ai_agent): an AI agent that runs inside an allowlisted
+# automation is still an AI agent.
+#
+# Command patterns are anchored to the whole command line (`^ ... $`) and
+# written for the exact shapes the automation produces. A pattern that
+# matches a fragment anywhere is a hole: an attacker appends
+# `; : /.ansible/tmp/ansible-tmp-x` to every command and inherits the
+# profile. `whotyped rules validate` rejects a profile that suppresses
+# rhythm, pty or style without at least one of users / src_cidrs /
+# fingerprints, a required clause or a banner clause.
 #
 # Every profile ships with empty users/src_cidrs. Narrow them in an
 # override file (rules.dirs) once you know where the automation comes
-# from; a profile that matches any source is a hole, not a policy.
+# from; `whotyped check` warns about each enabled profile that still
+# matches any source. Enable only the profiles a host actually needs.
 schema: whotyped.allowlist.v1
-version: "2026.09.11"
+version: "2026.09.12"
 
 profiles:
   - id: ansible
     description: >-
-      Ansible control node running modules on this host. Module runs look
-      like `/bin/sh -c '/usr/bin/python3 ~/.ansible/tmp/ansible-tmp-<ts>/
-      AnsiballZ_<module>.py && sleep 0'` in fast bursts without a PTY, so
-      they trip rhythm, pty and style. Ansible speaks OpenSSH (default) or
+      Ansible control node running modules on this host. Every module run is
+      a fixed sequence of exec channels: `echo ~user && sleep 0`, the
+      `( umask 77 && mkdir -p ... ansible-tmp-<ts>-<pid>-<n> ... ) && sleep 0`
+      staging step, `/usr/bin/python3 ~/.ansible/tmp/ansible-tmp-.../
+      AnsiballZ_<module>.py` (directly, via `/bin/sh -c '... && sleep 0'`,
+      or under `sudo -H -S -n -u root /bin/sh -c 'echo BECOME-SUCCESS-... ;
+      ...'` when become is on) and `rm -f -r .../ansible-tmp-.../ > /dev/null
+      2>&1 && sleep 0`, all in fast bursts without a PTY, so they trip rhythm,
+      pty and style. Each pattern is anchored to that exact shape and at least
+      one AnsiballZ module run is required, so a session merely mentioning
+      `.ansible/tmp` does not qualify. Ansible speaks OpenSSH (default) or
       paramiko; the paramiko banner is suppressed here because it would
-      otherwise leave a permanent +35. Restrict src_cidrs to the control
-      node. A cursor-agent or claude process launched by a playbook is
-      still reported.
+      otherwise leave a permanent +35. Restrict src_cidrs to the control node.
+      A cursor-agent or claude process launched by a playbook is still
+      reported.
     match:
       min_match_ratio: 0.6
       any_of:
-        - cmd_regex: '/\.ansible/tmp/ansible-tmp-'
-        - cmd_regex: 'AnsiballZ_[A-Za-z0-9_]+\.py'
-        - path_regex: '/\.ansible/'
-        - cmd_regex: '(?:^|\s)echo\s+~[a-z_][a-z0-9_-]*\s*&&\s*sleep\s+0'
+        # The module run itself, optionally wrapped in the login shell,
+        # /bin/sh -c '... && sleep 0' and the become prefix. \x27 is a
+        # single quote.
+        - required: true
+          cmd_regex: '^(?:(?:/usr)?(?:/bin/)?(?:ba|da)?sh -l?c \x27?)*(?:sudo -H -S -n +-u [a-z_][a-z0-9_-]* (?:/bin/)?sh -c \x27?(?:"\x27"\x27")?echo BECOME-SUCCESS-[a-z]+ ?; )?(?:/usr/bin/|/usr/libexec/platform-|/usr/local/bin/)?python[0-9.]* (?:/home/[^/ ]+|/root|/var/lib/[^/ ]+)/\.ansible/tmp/ansible-tmp-[0-9.]+-[0-9]+-[0-9]+/AnsiballZ_[A-Za-z0-9_]+\.py(?:\x27"\x27"\x27)?(?: && sleep 0)?\x27?$'
+        # Connection bootstrap: resolve the remote home.
+        - cmd_regex: '^(?:(?:/usr)?(?:/bin/)?(?:ba|da)?sh -l?c \x27?)*echo ~[a-z_][a-z0-9_-]* && sleep 0\x27?$'
+        # Temp dir staging.
+        - cmd_regex: '^(?:(?:/usr)?(?:/bin/)?(?:ba|da)?sh -l?c \x27?)*\( umask 77 && mkdir -p "` ?echo (?:/home/[^/ ]+|/root|/var/lib/[^/ ]+)/\.ansible/tmp ?`"&& mkdir "` ?echo (?:/home/[^/ ]+|/root|/var/lib/[^/ ]+)/\.ansible/tmp/ansible-tmp-[0-9.]+-[0-9]+-[0-9]+ ?`" && echo ansible-tmp-[0-9.]+-[0-9]+-[0-9]+="` ?echo (?:/home/[^/ ]+|/root|/var/lib/[^/ ]+)/\.ansible/tmp/ansible-tmp-[0-9.]+-[0-9]+-[0-9]+ ?`" \) && sleep 0\x27?$'
+        # Temp dir cleanup.
+        - cmd_regex: '^(?:(?:/usr)?(?:/bin/)?(?:ba|da)?sh -l?c \x27?)*rm -f -r (?:/home/[^/ ]+|/root|/var/lib/[^/ ]+)/\.ansible/tmp/ansible-tmp-[0-9.]+-[0-9]+-[0-9]+/ > /dev/null 2>&1 && sleep 0\x27?$'
     suppress:
       - rhythm
       - pty.none
@@ -88,7 +113,8 @@ profiles:
     match:
       min_match_ratio: 0.6
       any_of:
-        - path_regex: '/actions-runner/|/_work/_temp/'
+        - required: true
+          path_regex: '/actions-runner/|/_work/_temp/'
         - cmd_regex: '/actions-runner/|/_work/_temp/'
         - argv0_regex: '^(?:.*/)?(?:Runner\.Worker|Runner\.Listener|runsvc\.sh|run\.sh)$'
     suppress:
@@ -107,7 +133,8 @@ profiles:
       min_match_ratio: 0.6
       any_of:
         - argv0_regex: '^(?:.*/)?gitlab-runner(?:-helper)?$'
-        - cmd_regex: '(?:^|/)gitlab-runner(?:-helper)?(?:\s|$)'
+        - required: true
+          cmd_regex: '(?:^|/)gitlab-runner(?:-helper)?(?:\s|$)'
         - path_regex: '/builds/[^/]+/[^/]+/'
         - cmd_regex: '/builds/[^/]+/[^/]+/'
     suppress:
@@ -125,7 +152,8 @@ profiles:
     match:
       min_match_ratio: 0.9
       any_of:
-        - cmd_regex: '^(?:\S*/)?rsync\s+--server\b'
+        - required: true
+          cmd_regex: '^(?:\S*/)?rsync\s+--server\b'
         - argv0_regex: '^(?:.*/)?rsync$'
     suppress:
       - rhythm
@@ -141,7 +169,8 @@ profiles:
     match:
       min_match_ratio: 0.9
       any_of:
-        - cmd_regex: '(?:^|/)(?:sftp-server|internal-sftp)(?:\s|$)'
+        - required: true
+          cmd_regex: '(?:^|/)(?:sftp-server|internal-sftp)(?:\s|$)'
         - argv0_regex: '^(?:.*/)?(?:sftp-server|internal-sftp)$'
     suppress:
       - rhythm
@@ -155,7 +184,8 @@ profiles:
     match:
       min_match_ratio: 0.9
       any_of:
-        - cmd_regex: '(?:^|/)borg\s+serve\b'
+        - required: true
+          cmd_regex: '(?:^|/)borg\s+serve\b'
         - argv0_regex: '^(?:.*/)?borg$'
     suppress:
       - rhythm
@@ -174,7 +204,8 @@ profiles:
         - cmd_regex: '(?:^|/)(?:restic|rest-server)(?:\s|$)'
         - cmd_regex: '(?:^|/)rclone\s+serve\s+restic\b'
         - cmd_regex: '(?:^|/)sftp-server(?:\s|$)'
-        - argv0_regex: '^(?:.*/)?(?:restic|rest-server|rclone|sftp-server)$'
+        - required: true
+          argv0_regex: '^(?:.*/)?(?:restic|rest-server|rclone|sftp-server)$'
     suppress:
       - rhythm
       - pty.none

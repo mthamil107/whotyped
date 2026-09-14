@@ -196,7 +196,7 @@ func TestProfileSuppressValidation(t *testing.T) {
 	p := mustLoad(t)
 	p.Profiles = append(p.Profiles, Profile{
 		ID:       "bad",
-		Match:    Match{AnyOf: []MatchClause{{CmdRegex: "x"}}},
+		Match:    Match{Users: []string{"svc"}, AnyOf: []MatchClause{{CmdRegex: "x"}}},
 		Suppress: []string{"process", "proc.skip_flags", "env.ai_agent", "nonsense", "banner.automation", "style"},
 	})
 	errs := Validate(p)
@@ -384,5 +384,63 @@ func TestLoadDirsWithoutDefaults(t *testing.T) {
 	}
 	if _, err := LoadDirs(filepath.Join(dir, "a.yaml")); err == nil {
 		t.Error("a file path should not be accepted as a dir")
+	}
+}
+
+// TestProfileScopeAnchorRequired: a profile that zeroes the behavioural
+// clues must be tied to its automation by something other than the command
+// ratio, otherwise any session can satisfy it by mixing in matching text.
+func TestProfileScopeAnchorRequired(t *testing.T) {
+	base := func() *Pack { return mustLoad(t) }
+	want := `profile "loose": suppresses rhythm/pty/style but has no users, src_cidrs, fingerprints, required clause or banner clause; any session could satisfy it by mixing in matching commands`
+	has := func(errs []error) bool {
+		for _, e := range errs {
+			if e.Error() == want {
+				return true
+			}
+		}
+		return false
+	}
+	for _, tc := range []struct {
+		name   string
+		prof   Profile
+		reject bool
+	}{
+		{"unanchored-rhythm", Profile{ID: "loose", Match: Match{AnyOf: []MatchClause{{CmdRegex: `x`}}}, Suppress: []string{"rhythm"}}, true},
+		{"unanchored-pty-id", Profile{ID: "loose", Match: Match{AnyOf: []MatchClause{{CmdRegex: `x`}}}, Suppress: []string{"pty.none"}}, true},
+		{"unanchored-style-prefix", Profile{ID: "loose", Match: Match{AnyOf: []MatchClause{{CmdRegex: `x`}}}, Suppress: []string{"style.pager_guard"}}, true},
+		{"banner-only-is-fine", Profile{ID: "loose", Match: Match{AnyOf: []MatchClause{{CmdRegex: `x`}}}, Suppress: []string{"banner.library"}}, false},
+		{"users-anchor", Profile{ID: "loose", Match: Match{Users: []string{"deploy"}, AnyOf: []MatchClause{{CmdRegex: `x`}}}, Suppress: []string{"rhythm"}}, false},
+		{"cidr-anchor", Profile{ID: "loose", Match: Match{SrcCIDRs: []string{"10.0.0.0/8"}, AnyOf: []MatchClause{{CmdRegex: `x`}}}, Suppress: []string{"style"}}, false},
+		{"required-clause-anchor", Profile{ID: "loose", Match: Match{AnyOf: []MatchClause{{CmdRegex: `^rsync --server`, Required: true}}}, Suppress: []string{"pty"}}, false},
+		{"banner-clause-anchor", Profile{ID: "loose", Match: Match{AnyOf: []MatchClause{{BannerRegex: `Go$`}}}, Suppress: []string{"rhythm"}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := base()
+			p.Profiles = append(p.Profiles, tc.prof)
+			if got := has(Validate(p)); got != tc.reject {
+				t.Fatalf("reject=%v want %v: %v", got, tc.reject, Validate(p))
+			}
+		})
+	}
+	// Every shipped profile passes, which means each one is anchored.
+	if errs := Validate(base()); len(errs) != 0 {
+		t.Fatalf("shipped pack: %v", errs)
+	}
+}
+
+func TestLintFlagsAnySourceProfiles(t *testing.T) {
+	p := mustLoad(t)
+	warns := Lint(p)
+	if len(warns) != len(p.Profiles) {
+		t.Fatalf("shipped profiles all match any source; want %d warnings, got %d: %v", len(p.Profiles), len(warns), warns)
+	}
+	if warns[0] != "profile ansible matches any source; consider users/src_cidrs" {
+		t.Fatalf("first warning %q", warns[0])
+	}
+	p.Profiles[0].Match.SrcCIDRs = []string{"10.0.0.0/24"}
+	p.Profiles[1].Disabled = true
+	if got := Lint(p); len(got) != len(p.Profiles)-2 {
+		t.Fatalf("narrowed/disabled profiles still flagged: %v", got)
 	}
 }

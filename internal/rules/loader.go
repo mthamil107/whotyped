@@ -398,8 +398,58 @@ func Validate(p *Pack) []error {
 				add("profile %q: suppress %q requires allow_agent_processes: true", pr.ID, s)
 			}
 		}
+		if suppressesBehaviour(pr) && !hasAnchor(pr) {
+			add("profile %q: suppresses rhythm/pty/style but has no users, src_cidrs, fingerprints, required clause or banner clause; any session could satisfy it by mixing in matching commands", pr.ID)
+		}
 	}
 	return errs
+}
+
+// suppressesBehaviour reports whether a profile zeroes any of the three
+// behavioural categories an attacker can most cheaply imitate around.
+func suppressesBehaviour(pr Profile) bool {
+	for _, s := range pr.Suppress {
+		switch {
+		case s == "rhythm", s == "pty", s == "style",
+			strings.HasPrefix(s, "rhythm."), strings.HasPrefix(s, "pty."), strings.HasPrefix(s, "style."):
+			return true
+		}
+	}
+	return false
+}
+
+// hasAnchor reports whether something other than the command ratio ties the
+// profile to its automation: a source restriction, a clause every matching
+// session must satisfy on its own, or a client banner.
+func hasAnchor(pr Profile) bool {
+	m := pr.Match
+	if len(m.Users) > 0 || len(m.SrcCIDRs) > 0 || len(m.Fingerprints) > 0 {
+		return true
+	}
+	for _, cl := range m.AnyOf {
+		if cl.Required || cl.BannerRegex != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// Lint returns advisory findings that are not errors: a pack passing
+// Validate can still be a weaker policy than intended. Today it flags every
+// enabled profile that matches any source. `check` and `rules validate`
+// print these as warnings.
+func Lint(p *Pack) []string {
+	var out []string
+	for _, pr := range p.Profiles {
+		if pr.Disabled {
+			continue
+		}
+		m := pr.Match
+		if len(m.Users) == 0 && len(m.SrcCIDRs) == 0 && len(m.Fingerprints) == 0 {
+			out = append(out, fmt.Sprintf("profile %s matches any source; consider users/src_cidrs", pr.ID))
+		}
+	}
+	return out
 }
 
 // knownSuppress accepts a category, a spec clue id, a style id or group from

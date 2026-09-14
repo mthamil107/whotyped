@@ -1,6 +1,9 @@
 package auditd
 
 import (
+	"bufio"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -514,5 +517,65 @@ func TestUnsetSesInEvent(t *testing.T) {
 	evs := p.FlushAll()
 	if len(evs) != 1 || evs[0].Ses != -1 || evs[0].Field("auid") != "-1" || evs[0].Field("uid") != "0" {
 		t.Errorf("unset handling: %+v", evs)
+	}
+}
+
+// TestOversizedArgvIsCapped: a 128 KiB argv0 (hex-encoded, so 256 KiB on the
+// line) must come out capped at the name limit, the command at 2 KiB, and
+// comm at 64 bytes, without the parser holding the whole thing.
+func TestOversizedArgvIsCapped(t *testing.T) {
+	huge := strings.Repeat("A", 128<<10)
+	hexHuge := strings.ToUpper(hex.EncodeToString([]byte(huge + " with space")))
+	comm := strings.ToUpper(hex.EncodeToString([]byte(strings.Repeat("c", 200))))
+	lines := []string{
+		`type=SYSCALL msg=audit(1757600000.100:900): arch=c000003e syscall=59 success=yes exit=0 a0=1 a1=2 a2=3 a3=4 items=2 ppid=1 pid=2 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=(none) ses=7 comm=` + comm + ` exe="/usr/bin/` + strings.Repeat("e", 400) + `" key="whotyped-exec"`,
+		`type=EXECVE msg=audit(1757600000.100:900): argc=2 a0=` + hexHuge + ` a1="x"`,
+		`type=PROCTITLE msg=audit(1757600000.100:900): proctitle=` + strings.ToUpper(hex.EncodeToString([]byte("a\x00b"))),
+	}
+	evs := Replay(strings.NewReader(strings.Join(lines, "\n") + "\n"))
+	if len(evs) != 1 {
+		t.Fatalf("%d events", len(evs))
+	}
+	ev := evs[0]
+	if l := len(ev.Field("argv0")); l != maxNameLen {
+		t.Errorf("argv0 len %d", l)
+	}
+	if l := len(ev.Field("cmd")); l != maxCmdLen {
+		t.Errorf("cmd len %d", l)
+	}
+	if l := len(ev.Field("comm")); l != maxCommLen {
+		t.Errorf("comm len %d", l)
+	}
+	if l := len(ev.Field("exe")); l != maxNameLen {
+		t.Errorf("exe len %d", l)
+	}
+}
+
+// TestReplayFlushesStaleGroups: records whose EOE/PROCTITLE never arrives
+// are still emitted once the replay has moved on, not held until EOF.
+func TestReplayFlushesStaleGroups(t *testing.T) {
+	var b strings.Builder
+	// 1500 execve events, none of them closed by PROCTITLE/EOE and each
+	// exactly one serial apart, so Feed's two-serials-behind rule never
+	// fires on its own.
+	for i := 0; i < 1500; i++ {
+		fmt.Fprintf(&b, "type=SYSCALL msg=audit(1757600000.%03d:%d): arch=c000003e syscall=59 success=yes exit=0 pid=%d auid=1000 uid=1000 ses=7 comm=\"ls\" exe=\"/bin/ls\"\n", i%1000, 1000+i, 3000+i)
+	}
+	p := NewParser()
+	sc := bufio.NewScanner(strings.NewReader(b.String()))
+	n, fed := 0, 0
+	for sc.Scan() {
+		n += len(p.Feed(sc.Text()))
+		fed++
+	}
+	if p.Pending() != 1500-n || n > 1499 {
+		t.Fatalf("plain feed: emitted %d pending %d", n, p.Pending())
+	}
+	evs := Replay(strings.NewReader(b.String()))
+	if len(evs) != 1500 {
+		t.Fatalf("replay emitted %d events, want 1500", len(evs))
+	}
+	if evs[0].PID != 3000 || evs[1499].PID != 4499 {
+		t.Fatalf("order lost: first pid %d last pid %d", evs[0].PID, evs[1499].PID)
 	}
 }

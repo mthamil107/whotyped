@@ -158,11 +158,16 @@ func TestReadEventsRejectsGarbage(t *testing.T) {
 	if _, err := ReadEvents(strings.NewReader("{\"kind\":\"ssh.auth_ok\"}\n\n# comment\nnot json\n")); err == nil {
 		t.Fatal("expected error")
 	}
-	evs, err := ReadEvents(strings.NewReader("{\"kind\":\"ssh.auth_ok\",\"user\":\"a\"}\n# c\n\n{\"kind\":\"tick\"}\n"))
+	evs, err := ReadEvents(strings.NewReader("{\"ts\":\"2026-09-11T14:00:00Z\",\"kind\":\"ssh.auth_ok\",\"user\":\"a\"}\n# c\n\n{\"ts\":\"2026-09-11T14:00:01Z\",\"kind\":\"tick\"}\n"))
 	if err != nil || len(evs) != 2 || evs[0].User != "a" {
 		t.Fatalf("%v %v", evs, err)
 	}
 	if _, err := ReadEvents(strings.NewReader("{\"user\":\"a\"}\n")); err == nil {
 		t.Fatal("missing kind must fail")
+	}
+	// Zero-timestamp events are skipped and counted, not scored "now".
+	evs, skipped, err := ReadEventsSkipped(strings.NewReader("{\"kind\":\"ssh.auth_ok\",\"user\":\"a\"}\n{\"ts\":\"2026-09-11T14:00:00Z\",\"kind\":\"tick\"}\n{\"kind\":\"tick\",\"ts\":\"0001-01-01T00:00:00Z\"}\n"))
+	if err != nil || len(evs) != 1 || skipped != 2 {
+		t.Fatalf("zero ts: events=%d skipped=%d err=%v", len(evs), skipped, err)
 	}
 }

@@ -37,13 +37,17 @@ readers:
     interval: 2s
     read_environ: true
 
-  # /proc/net/tcp scanner for connections to AI API hosts. resolve: true
-  # performs reverse DNS on destination IPs, which is a network call;
-  # leave it off unless the host has no outbound proxy logging.
+  # /proc/net/tcp scanner for connections to AI API hosts. resolve selects
+  # how the api_hosts names in the rule pack become addresses:
+  #   hostlist  resolve every rule hostname every few minutes and match
+  #             sockets against the answers (forward DNS, one query per
+  #             hostname; the default)
+  #   none      never perform DNS; only literal-IP and CIDR rules match
+  # The old boolean spelling still works (false = none, true = hostlist).
   netconn:
     enabled: true
     interval: 5s
-    resolve: false
+    resolve: hostlist
 
 rules:
   # Override directories merged on top of the embedded packs, in order;
@@ -51,7 +55,9 @@ rules:
   # same id replace earlier ones; `disabled: true` removes an id.
   dirs:
     - /etc/whotyped/rules.d
-  # Reserved. v0.1 never downloads rule packs.
+  # Not implemented in v0.1: rule packs ship with the package and are
+  # overridden from dirs. Setting true is a configuration error, so nobody
+  # believes their packs are being refreshed when they are not.
   auto_update: false
 
 scoring:
@@ -103,8 +109,12 @@ freeze_windows:
 allowlist:
   # Profiles from rules/allowlist.yaml to apply on this host. Each one
   # suppresses the rhythm/pty/style clues its automation produces; none can
-  # suppress process, flags or identity clues. Narrow them with users /
-  # src_cidrs in an override file. Default: none enabled.
+  # suppress process, flags or identity clues. Every shipped profile is
+  # anchored to its automation's exact command shapes and requires at least
+  # one signature command (an AnsiballZ module run, a path under
+  # ~/.vscode-server, `rsync --server`, ...), but still matches any source:
+  # `whotyped check` warns about each enabled profile until you add users or
+  # src_cidrs in an override file under rules.dirs. Default: none enabled.
   profiles_enabled:
     - ansible
     - vscode-remote

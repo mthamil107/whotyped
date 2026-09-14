@@ -29,6 +29,11 @@ type Connection struct {
 	PTYOpened     time.Time `json:"pty_opened,omitempty"`
 	ExecCount     int       `json:"exec_count"`
 	ShellCount    int       `json:"shell_count"`
+	// PTYExecCount counts exec channels that forced a PTY (`ssh -tt host
+	// cmd`). Additive field: PTY is set only by shell sessions, so a tool
+	// that asks for a terminal on every one-command channel still has no
+	// interactive shell and pty.none still applies.
+	PTYExecCount int `json:"pty_exec_count,omitempty"`
 }
 
 // ExecSample is one command execution (an SSH exec channel or an auditd execve).
@@ -54,6 +59,12 @@ type ProcSample struct {
 	Flags    []string          `json:"flags,omitempty"`
 	Agent    string            `json:"agent,omitempty"` // rule id if matched
 	LastSeen time.Time         `json:"last_seen"`
+	// Attributed is true when the process was joined to the track by audit
+	// session id, by its parent being the connection's sshd child, or by
+	// being the process that created a local track; false when it was only
+	// placed here as the user's most recent track. Additive field: only an
+	// attributed process may declare an agent (AI_AGENT) for the track.
+	Attributed bool `json:"attributed,omitempty"`
 }
 
 // NetSample is an outbound connection attributed to the track.

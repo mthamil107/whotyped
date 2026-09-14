@@ -60,7 +60,7 @@ Online (default): drives the system `ssh` client against `--target` (default
 `--alerts` (default `sinks.jsonfile.path`) every 2 s for an alert about the
 target user.
 
-- `claude-bash` (default) and `paramiko-mcp`: 12 benign, tool-shaped commands, one exec channel each, no PTY, 300-900 ms apart. Creates and removes `/tmp/whotyped-sim.txt`.
+- `claude-bash` (default) and `paramiko-mcp`: 12 benign, tool-shaped commands, one exec channel each, no PTY, 300-900 ms apart. Creates and removes a per-run marker file `/tmp/whotyped-sim-<random>.txt` (a fixed name would let anyone pre-plant a symlink in `/tmp`).
 - `human` and `ansible`: one PTY session with slow commands; expects **no** alert (waits at most 30 s).
 - `local-agent`: spawns `whotyped __sim-agent --dangerously-skip-permissions` with `CLAUDECODE=1` for 45 s. The process name stays `whotyped`, so this exercises the env and flags clues, not `proc.agent_name`.
 - `--declared` adds `-o SetEnv=AI_AGENT=whotyped-simulate`; needs `AcceptEnv AI_AGENT` on the server.

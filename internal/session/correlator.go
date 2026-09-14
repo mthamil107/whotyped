@@ -1,6 +1,7 @@
 package session
 
 import (
+	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/whotyped/whotyped/internal/clean"
 	"github.com/whotyped/whotyped/internal/event"
 )
 
@@ -18,7 +20,18 @@ type Options struct {
 	MaxExecsPerTrack int              // oldest ExecSamples are dropped past this (default 2000)
 	ProcTTL          time.Duration    // a ProcSample not refreshed within ProcTTL is trimmed by Expire (default 60s = 3 procfs scans)
 	Now              func() time.Time // clock for events without a timestamp (default time.Now)
+	// OnDrop is called with the id of every track the correlator forgets,
+	// whether it expired or was a provisional track absorbed by its real
+	// one, so the pipeline can release per-track memos (dispatcher dedupe,
+	// dirty set). Optional.
+	OnDrop func(id string)
 }
+
+// maxFailIPs bounds the per-source-IP auth failure counters. Pre-auth
+// failures never create tracks (a brute force would otherwise mint thousands
+// of them); the counts are kept for future use and evicted least recently
+// used.
+const maxFailIPs = 1024
 
 // Correlator joins events from sshd logs, auditd and procfs into Tracks.
 //
@@ -30,12 +43,20 @@ type Correlator struct {
 
 	tracks    map[string]*Track   // by Track.ID
 	byKey     map[TrackKey]*Track // open track per key
-	byPID     map[int]*connRef    // sshd child pid -> connection
+	byPID     map[int]*connRef    // sshd child pid (and post-auth user child pid) -> connection
 	byTuple   map[tuple]*connRef  // (user, ip, port) -> connection
 	bySes     map[int]*Track      // audit session id -> track
 	byProcPID map[int]*Track      // process pid (procfs) -> track
 	userLast  map[string]*Track   // most recently active track per user
 	uidUser   map[string]string   // uid -> user, learned from pam_open / proc.seen
+
+	failIPs   map[string]*list.Element // src ip -> element in failOrder (value *ipFails)
+	failOrder *list.List               // least recently used first
+}
+
+type ipFails struct {
+	ip    string
+	count int
 }
 
 type tuple struct {
@@ -45,10 +66,13 @@ type tuple struct {
 }
 
 // connRef binds a Connection to the Track it currently lives on. Track is nil
-// for a "pending" connection seen (banner) before the user is known.
+// for a "pending" connection seen (banner) before the user is known. child is
+// the post-auth "User child is on pid N" pid (OpenSSH <= 9.7), indexed so
+// lines logged by that pid without a tuple still join the connection.
 type connRef struct {
 	conn  *Connection
 	track *Track
+	child int
 }
 
 // New returns a Correlator with defaults applied.
@@ -79,6 +103,8 @@ func (c *Correlator) reset() {
 	c.byProcPID = map[int]*Track{}
 	c.userLast = map[string]*Track{}
 	c.uidUser = map[string]string{}
+	c.failIPs = map[string]*list.Element{}
+	c.failOrder = list.New()
 }
 
 // Apply folds one event into the state and returns the affected track (nil if
@@ -94,7 +120,7 @@ func (c *Correlator) Apply(ev event.Event) (*Track, bool) {
 	case event.SSHAuthOK:
 		t = c.authOK(ev, ts)
 	case event.SSHAuthFail:
-		t = c.authFail(ev, ts)
+		t = c.authFail(ev)
 	case event.SSHSessionStart:
 		t = c.sessionStart(ev, ts)
 	case event.SSHBanner:
@@ -118,7 +144,10 @@ func (c *Correlator) Apply(ev event.Event) (*Track, bool) {
 	case event.NetConn:
 		t = c.netConn(ev, ts)
 	}
-	if t != nil {
+	// A failed login is not activity of the account: it must neither keep a
+	// track alive nor make it the user's most recent one (userLast is what
+	// unattributed processes and execves fall back to).
+	if t != nil && ev.Kind != event.SSHAuthFail {
 		c.touch(t, ts)
 	}
 	return t, ev.Strong()
@@ -146,14 +175,50 @@ func (c *Correlator) authOK(ev event.Event, ts time.Time) *Track {
 	return ref.track
 }
 
-func (c *Correlator) authFail(ev event.Event, ts time.Time) *Track {
+// authFail counts a pre-auth failure on an existing track of the same user
+// and source (a real session that also fumbled a key) and on the bounded
+// per-IP table. It never creates a track: "Invalid user admin from ..." is
+// not a session, and a brute force must not cost a Track per attempt.
+func (c *Correlator) authFail(ev event.Event) *Track {
+	if ev.SrcIP != "" {
+		c.countFail(ev.SrcIP)
+	}
+	if ev.User == "" || ev.Field("invalid_user") == "true" {
+		return nil
+	}
 	t := c.recentTrack(ev.User, ev.SrcIP)
 	if t == nil {
-		t = c.trackFor(TrackKey{User: ev.User, Fingerprint: "-", SrcIP: ev.SrcIP}, ts)
+		return nil
 	}
 	t.AuthFails++
 	return t
 }
+
+func (c *Correlator) countFail(ip string) {
+	if el := c.failIPs[ip]; el != nil {
+		el.Value.(*ipFails).count++
+		c.failOrder.MoveToBack(el)
+		return
+	}
+	for c.failOrder.Len() >= maxFailIPs {
+		old := c.failOrder.Front()
+		delete(c.failIPs, old.Value.(*ipFails).ip)
+		c.failOrder.Remove(old)
+	}
+	c.failIPs[ip] = c.failOrder.PushBack(&ipFails{ip: ip, count: 1})
+}
+
+// AuthFailsByIP returns the pre-auth failures counted for a source IP (0 when
+// unknown or evicted). Kept for future brute-force clues; not scored in v0.1.
+func (c *Correlator) AuthFailsByIP(ip string) int {
+	if el := c.failIPs[ip]; el != nil {
+		return el.Value.(*ipFails).count
+	}
+	return 0
+}
+
+// FailIPCount reports how many source IPs the failure table currently holds.
+func (c *Correlator) FailIPCount() int { return c.failOrder.Len() }
 
 func (c *Correlator) sessionStart(ev event.Event, ts time.Time) *Track {
 	ref := c.ensureConn(ev, ts)
@@ -161,9 +226,17 @@ func (c *Correlator) sessionStart(ev event.Event, ts time.Time) *Track {
 		return nil
 	}
 	conn := ref.conn
+	tty := ev.Field("tty") != ""
 	switch ev.Field("stype") {
-	case "command":
+	case "command", "forced-command":
+		// A forced command (authorized_keys command= or sshd ForceCommand)
+		// is still one exec channel; sshd logs the command it ran.
 		conn.ExecCount++
+		if tty {
+			// `ssh -tt host cmd`: a terminal on a one-command channel is not
+			// an interactive shell and must not cancel pty.none.
+			conn.PTYExecCount++
+		}
 		if ref.track != nil {
 			c.addExec(ref.track, ExecSample{TS: ts, Cmd: ev.Field("cmd"), Ses: conn.Ses, PID: conn.SSHDPID, Origin: "sshlog"})
 		}
@@ -173,9 +246,6 @@ func (c *Correlator) sessionStart(ev event.Event, ts time.Time) *Track {
 	case "subsystem":
 		// sftp/scp subsystems say nothing about rhythm; the connection itself is recorded.
 	}
-	if ev.Field("tty") != "" {
-		setPTY(conn, ts)
-	}
 	return ref.track
 }
 
@@ -184,7 +254,7 @@ func (c *Correlator) banner(ev event.Event, ts time.Time) *Track {
 	if ref == nil {
 		return nil
 	}
-	ref.conn.Banner = ev.Field("banner")
+	ref.conn.Banner = clean.Text(ev.Field("banner"), clean.MaxName)
 	return ref.track
 }
 
@@ -193,17 +263,20 @@ func (c *Correlator) sshEnv(ev event.Event, ts time.Time) *Track {
 	if ref == nil {
 		return nil
 	}
-	if ev.Field("name") == "AI_AGENT" && ev.Field("value") != "" {
-		ref.conn.DeclaredAgent = ev.Field("value")
-		if ref.track != nil {
-			ref.track.DeclaredAgent = ev.Field("value")
+	if ev.Field("name") == "AI_AGENT" {
+		if v, ok := clean.AIAgent(ev.Field("value")); ok {
+			ref.conn.DeclaredAgent = v
+			if ref.track != nil {
+				refreshDeclared(ref.track)
+			}
 		}
 	}
 	return ref.track
 }
 
 // pamOpen learns the uid->user mapping (used to attribute auditd execves that
-// carry no session id) and touches the connection's track.
+// carry no session id), indexes the post-auth child pid when sshd announces
+// it, and touches the connection's track.
 func (c *Correlator) pamOpen(ev event.Event) *Track {
 	if uid := ev.Field("uid"); uid != "" && ev.User != "" {
 		c.uidUser[uid] = ev.User
@@ -212,13 +285,29 @@ func (c *Correlator) pamOpen(ev event.Event) *Track {
 	if ref == nil {
 		return nil
 	}
+	if ev.Field("note") == "user_child" {
+		if pid := atoi(ev.Field("child_pid")); pid != 0 && ref.child == 0 {
+			ref.child = pid
+			c.byPID[pid] = ref
+		}
+	}
 	return ref.track
 }
 
+// disconnect ends a connection on scope=connection ("Disconnected from",
+// "Received disconnect", "Connection closed/reset") or, when the connection
+// is still open, on the PAM session close. A scope=channel line ("Close
+// session: user ... id N") only ends one channel: with ControlMaster or a
+// tool's pooled connection the TCP connection lives on, and closing it here
+// would make the next "Starting session" mint a fingerprint-less
+// provisional connection on a second track.
 func (c *Correlator) disconnect(ev event.Event, ts time.Time) *Track {
 	ref := c.findConn(ev)
 	if ref == nil {
 		return nil
+	}
+	if ev.Field("scope") == "channel" {
+		return ref.track
 	}
 	ref.conn.Closed = ts
 	c.unindex(ref) // pids and ports get reused; never join new lines to a closed connection
@@ -270,7 +359,7 @@ func (c *Correlator) auditExecve(ev event.Event, ts time.Time) *Track {
 	if t == nil {
 		return nil // not an SSH session we know about (cron, console, ...)
 	}
-	c.addExec(t, ExecSample{TS: ts, Argv0: ev.Field("argv0"), Cmd: ev.Field("cmd"), Ses: sesOf(ev), PID: ev.PID, Origin: "auditd"})
+	c.addExec(t, ExecSample{TS: ts, Argv0: clean.Text(ev.Field("argv0"), clean.MaxName), Cmd: ev.Field("cmd"), Ses: sesOf(ev), PID: ev.PID, Origin: "auditd"})
 	return t
 }
 
@@ -280,25 +369,26 @@ func (c *Correlator) procSeen(ev event.Event, ts time.Time) *Track {
 	if uid := ev.Field("uid"); uid != "" && ev.User != "" {
 		c.uidUser[uid] = ev.User
 	}
-	t := c.attributeLocal(ev, ts)
+	t, attributed := c.attributeLocal(ev, ts)
 	if t == nil {
 		return nil
 	}
 	ps := ProcSample{
-		TS:       ts,
-		PID:      ev.PID,
-		Comm:     ev.Field("comm"),
-		Exe:      ev.Field("exe"),
-		Cmd:      ev.Field("cmd"),
-		Ses:      sesOf(ev),
-		UID:      atoi(ev.Field("uid")),
-		Agent:    ev.Field("agent"),
-		LastSeen: ts,
+		TS:         ts,
+		PID:        ev.PID,
+		Comm:       clean.Text(ev.Field("comm"), clean.MaxComm),
+		Exe:        clean.Text(ev.Field("exe"), clean.MaxName),
+		Cmd:        clean.Text(ev.Field("cmd"), 0),
+		Ses:        sesOf(ev),
+		UID:        atoi(ev.Field("uid")),
+		Agent:      clean.Text(ev.Field("agent"), clean.MaxComm),
+		LastSeen:   ts,
+		Attributed: attributed,
 	}
 	if f := ev.Field("flags"); f != "" {
 		for _, x := range strings.Split(f, ",") {
 			if x = strings.TrimSpace(x); x != "" {
-				ps.Flags = append(ps.Flags, x)
+				ps.Flags = append(ps.Flags, clean.Text(x, clean.MaxComm))
 			}
 		}
 	}
@@ -307,11 +397,16 @@ func (c *Correlator) procSeen(ev event.Event, ts time.Time) *Track {
 			if ps.Env == nil {
 				ps.Env = map[string]string{}
 			}
+			if name == "AI_AGENT" {
+				// The value is kept (as-is when valid, as the marker when
+				// not) so proc.agent_env and the operator still see it;
+				// refreshDeclared re-validates before it becomes a claim.
+				v, _ = clean.AIAgent(v)
+			} else {
+				v = clean.Text(v, clean.MaxAIAgent)
+			}
 			ps.Env[name] = v
 		}
-	}
-	if v := ps.Env["AI_AGENT"]; v != "" {
-		t.DeclaredAgent = v
 	}
 	replaced := false
 	for i := range t.Procs {
@@ -326,6 +421,7 @@ func (c *Correlator) procSeen(ev event.Event, ts time.Time) *Track {
 		t.Procs = append(t.Procs, ps)
 	}
 	c.byProcPID[ps.PID] = t
+	refreshDeclared(t)
 	return t
 }
 
@@ -341,6 +437,7 @@ func (c *Correlator) procGone(ev event.Event) *Track {
 			break
 		}
 	}
+	refreshDeclared(t)
 	return t
 }
 
@@ -351,7 +448,7 @@ func (c *Correlator) netConn(ev event.Event, ts time.Time) *Track {
 		t = c.byProcPID[ev.PID]
 	}
 	if t == nil {
-		t = c.attributeLocal(ev, ts)
+		t, _ = c.attributeLocal(ev, ts)
 	}
 	if t == nil {
 		return nil
@@ -360,30 +457,70 @@ func (c *Correlator) netConn(ev event.Event, ts time.Time) *Track {
 		TS:         ts,
 		Dst:        ev.Field("dst"),
 		DstPort:    atoi(ev.Field("dst_port")),
-		Host:       ev.Field("host"),
-		Agent:      ev.Field("agent"),
+		Host:       clean.Text(ev.Field("host"), clean.MaxName),
+		Agent:      clean.Text(ev.Field("agent"), clean.MaxComm),
 		PID:        ev.PID,
 		Attributed: sesOf(ev) != 0 || knownPID,
 	})
 	return t
 }
 
-// attributeLocal joins a procfs/netconn event to a track: by audit session,
-// then by the most recent track of the same user, else a fresh local track.
-func (c *Correlator) attributeLocal(ev event.Event, ts time.Time) *Track {
+// attributeLocal joins a procfs/netconn event to a track and reports whether
+// the join is an attribution (audit session id; parent is the connection's
+// sshd child or an attributed process; a fresh local track of its own) or
+// merely the user's most recent track. Only attributed processes may declare
+// an agent: otherwise `AI_AGENT=x sleep infinity` left in the background
+// would label whatever SSH session the same user opens next.
+func (c *Correlator) attributeLocal(ev event.Event, ts time.Time) (*Track, bool) {
 	if t := c.trackBySes(ev); t != nil {
-		return t
+		return t, true
+	}
+	if ppid := atoi(ev.Field("ppid")); ppid > 1 {
+		if ref := c.byPID[ppid]; ref != nil && ref.track != nil {
+			return ref.track, true
+		}
+		if t := c.byProcPID[ppid]; t != nil {
+			for _, p := range t.Procs {
+				if p.PID == ppid {
+					return t, p.Attributed
+				}
+			}
+			return t, false
+		}
 	}
 	user := c.userOf(ev)
 	if user == "" {
-		return nil
+		return nil, false
 	}
 	if t := c.userLast[user]; t != nil {
-		return t
+		return t, false
 	}
 	t := c.trackFor(TrackKey{User: user, Fingerprint: "-", SrcIP: "local"}, ts)
 	t.Mode = "local_agent"
-	return t
+	return t, true
+}
+
+// refreshDeclared recomputes Track.DeclaredAgent from what still declares:
+// any connection of the track that carried an accepted AI_AGENT SetEnv, else
+// any attributed live process with a valid AI_AGENT. When the declaring
+// process is gone and nothing else declares, the claim is withdrawn.
+func refreshDeclared(t *Track) {
+	for _, conn := range t.Connections {
+		if conn.DeclaredAgent != "" {
+			t.DeclaredAgent = conn.DeclaredAgent
+			return
+		}
+	}
+	for _, p := range t.Procs {
+		if !p.Attributed || p.Env["AI_AGENT"] == clean.InvalidDeclaration {
+			continue
+		}
+		if v, ok := clean.AIAgent(p.Env["AI_AGENT"]); ok {
+			t.DeclaredAgent = v
+			return
+		}
+	}
+	t.DeclaredAgent = ""
 }
 
 // ---- lookups ---------------------------------------------------------------
@@ -452,14 +589,19 @@ func (c *Correlator) index(ref *connRef) {
 	if ref.conn.SSHDPID != 0 {
 		c.byPID[ref.conn.SSHDPID] = ref
 	}
+	if ref.child != 0 {
+		c.byPID[ref.child] = ref
+	}
 	if ref.conn.User != "" && ref.conn.SrcPort != 0 {
 		c.byTuple[tuple{ref.conn.User, ref.conn.SrcIP, ref.conn.SrcPort}] = ref
 	}
 }
 
 func (c *Correlator) unindex(ref *connRef) {
-	if r := c.byPID[ref.conn.SSHDPID]; r == ref {
-		delete(c.byPID, ref.conn.SSHDPID)
+	for _, pid := range []int{ref.conn.SSHDPID, ref.child} {
+		if r := c.byPID[pid]; pid != 0 && r == ref {
+			delete(c.byPID, pid)
+		}
 	}
 	k := tuple{ref.conn.User, ref.conn.SrcIP, ref.conn.SrcPort}
 	if r := c.byTuple[k]; r == ref {
@@ -488,6 +630,8 @@ func (c *Correlator) moveConn(ref *connRef, dst *Track) {
 		src.Execs = kept
 		if len(src.Connections) == 0 && len(src.Execs) == 0 && len(src.Procs) == 0 && len(src.NetConns) == 0 {
 			c.drop(src)
+		} else {
+			refreshDeclared(src)
 		}
 	}
 	if ref.track != dst {
@@ -497,9 +641,7 @@ func (c *Correlator) moveConn(ref *connRef, dst *Track) {
 	if ref.conn.Ses != 0 {
 		c.bySes[ref.conn.Ses] = dst
 	}
-	if ref.conn.DeclaredAgent != "" && dst.DeclaredAgent == "" {
-		dst.DeclaredAgent = ref.conn.DeclaredAgent
-	}
+	refreshDeclared(dst)
 }
 
 func (c *Correlator) trackFor(key TrackKey, ts time.Time) *Track {
@@ -596,12 +738,13 @@ func (c *Correlator) drop(t *Track) {
 	if c.byKey[t.Key] == t {
 		delete(c.byKey, t.Key)
 	}
-	for _, conn := range t.Connections {
-		if ref := c.byPID[conn.SSHDPID]; ref != nil && ref.conn == conn {
-			delete(c.byPID, conn.SSHDPID)
+	for pid, ref := range c.byPID {
+		if ref.track == t {
+			delete(c.byPID, pid)
 		}
-		k := tuple{conn.User, conn.SrcIP, conn.SrcPort}
-		if ref := c.byTuple[k]; ref != nil && ref.conn == conn {
+	}
+	for k, ref := range c.byTuple {
+		if ref.track == t {
 			delete(c.byTuple, k)
 		}
 	}
@@ -617,6 +760,9 @@ func (c *Correlator) drop(t *Track) {
 	}
 	if c.userLast[t.Key.User] == t {
 		delete(c.userLast, t.Key.User)
+	}
+	if c.opts.OnDrop != nil {
+		c.opts.OnDrop(t.ID)
 	}
 }
 
@@ -641,7 +787,10 @@ func (c *Correlator) Expire(now time.Time) []*Track {
 				delete(c.byProcPID, p.PID)
 			}
 		}
-		t.Procs = kept
+		if len(kept) != len(t.Procs) {
+			t.Procs = kept
+			refreshDeclared(t)
+		}
 	}
 	for _, t := range gone {
 		c.drop(t)

@@ -72,13 +72,43 @@ type Procfs struct {
 type Netconn struct {
 	Enabled  bool     `yaml:"enabled"`
 	Interval Duration `yaml:"interval"`
-	Resolve  bool     `yaml:"resolve"` // reverse-resolve destination IPs (network call)
+	// Resolve selects how api_hosts names become addresses: "hostlist"
+	// (default) resolves every hostname in the rule pack every few minutes
+	// and matches sockets against the answers; "none" never performs DNS,
+	// so only literal-IP and CIDR rules can match. The old boolean spelling
+	// is accepted: false -> none, true -> hostlist.
+	Resolve Resolve `yaml:"resolve"`
+}
+
+// Resolve is the readers.netconn.resolve mode.
+type Resolve string
+
+// Resolve modes.
+const (
+	ResolveHostList Resolve = "hostlist"
+	ResolveNone     Resolve = "none"
+)
+
+// UnmarshalYAML accepts "hostlist", "none", or a YAML boolean.
+func (r *Resolve) UnmarshalYAML(n *yaml.Node) error {
+	switch strings.ToLower(strings.TrimSpace(n.Value)) {
+	case "hostlist", "true", "yes", "on":
+		*r = ResolveHostList
+	case "none", "false", "no", "off", "":
+		*r = ResolveNone
+	default:
+		return fmt.Errorf("readers.netconn.resolve %q: want hostlist|none", n.Value)
+	}
+	return nil
 }
 
 // Rules configures rule pack overrides.
 type Rules struct {
-	Dirs       []string `yaml:"dirs"`
-	AutoUpdate bool     `yaml:"auto_update"` // reserved; v0.1 never fetches packs
+	Dirs []string `yaml:"dirs"`
+	// AutoUpdate is not implemented in v0.1: rule packs ship with the
+	// package and are overridden from Dirs. Validate rejects true so nobody
+	// believes their packs are being refreshed.
+	AutoUpdate bool `yaml:"auto_update"`
 }
 
 // Scoring configures the scorer.
@@ -185,7 +215,7 @@ func Default() Config {
 			SSHLog:  SSHLog{Source: "auto"},
 			Auditd:  Auditd{Enabled: true, File: "/var/log/audit/audit.log"},
 			Procfs:  Procfs{Enabled: true, Interval: Duration(2 * time.Second), ReadEnviron: true},
-			Netconn: Netconn{Enabled: true, Interval: Duration(5 * time.Second), Resolve: false},
+			Netconn: Netconn{Enabled: true, Interval: Duration(5 * time.Second), Resolve: ResolveHostList},
 		},
 		Rules: Rules{Dirs: []string{"/etc/whotyped/rules.d"}},
 		Scoring: Scoring{
@@ -308,6 +338,12 @@ func (c Config) Validate() error {
 	}
 	if c.Readers.Netconn.Enabled && c.Readers.Netconn.Interval <= 0 {
 		add("readers.netconn.interval must be positive")
+	}
+	if r := c.Readers.Netconn.Resolve; r != ResolveHostList && r != ResolveNone {
+		add("readers.netconn.resolve %q: want hostlist|none", string(r))
+	}
+	if c.Rules.AutoUpdate {
+		add("rules.auto_update: not implemented in v0.1; rule packs ship with the package (override them from rules.dirs)")
 	}
 
 	if c.Scoring.Window <= 0 {

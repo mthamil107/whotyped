@@ -100,13 +100,29 @@ func (r *Reader) Stats() Stats { return r.parser.Stats() }
 
 // Replay parses a whole audit log (fixture or `run --once` input) and returns
 // every event in order. Lines may be up to 8 MiB (chunked EXECVE records).
+// Groups that never received their closing record are flushed every
+// replayFlushLines lines (wall-clock ageing means nothing in a replay) and
+// once more at the end, so a log with lost EOE records cannot hold every
+// group open until EOF.
 func Replay(rd io.Reader) []event.Event {
 	p := NewParser()
 	sc := bufio.NewScanner(rd)
 	sc.Buffer(make([]byte, 1<<20), 8<<20)
 	var evs []event.Event
+	lines := 0
 	for sc.Scan() {
 		evs = append(evs, p.Feed(sc.Text())...)
+		if lines++; lines%replayFlushLines == 0 {
+			evs = append(evs, p.flushAllBut(replayKeepOpen)...)
+		}
 	}
 	return append(evs, p.FlushAll()...)
 }
+
+// replayFlushLines is how often Replay closes stale groups; replayKeepOpen is
+// how many of the newest groups it leaves alone, since adjacent events may
+// still interleave their records (two is the most audit.log produces).
+const (
+	replayFlushLines = 1000
+	replayKeepOpen   = 2
+)

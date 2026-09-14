@@ -46,7 +46,7 @@ func fixPlatform(opts Options, w io.Writer) ([]Result, int) {
 	}
 	code := ExitOK
 
-	res, changed := installFile(SSHDDropInPath, SSHDDropIn, 0o644)
+	res, changed := installFile(SSHDDropInPath, SSHDDropIn, 0o644, 0o755)
 	results = append(results, res)
 	if res.Status == StatusFail {
 		code = ExitCannotRun
@@ -78,7 +78,8 @@ func fixPlatform(opts Options, w io.Writer) ([]Result, int) {
 		}
 	}
 
-	res, _ = installFile(AuditRulesPath, AuditRules, 0o640)
+	// /etc/audit/rules.d holds root-only policy: create it 0750, never 0755.
+	res, _ = installFile(AuditRulesPath, AuditRules, 0o640, 0o750)
 	results = append(results, res)
 	if res.Status == StatusFail {
 		code = ExitCannotRun
@@ -100,15 +101,16 @@ func includesDropIns(includes []string) bool {
 	return false
 }
 
-// installFile writes content to path atomically unless it is already there.
-func installFile(path, content string, mode os.FileMode) (Result, bool) {
+// installFile writes content to path atomically unless it is already there,
+// creating the parent directory with dirMode when missing.
+func installFile(path, content string, mode, dirMode os.FileMode) (Result, bool) {
 	if cur, err := os.ReadFile(path); err == nil && string(cur) == content {
 		return Result{Name: "fix." + filepath.Base(path), Status: StatusPass, Detail: path + " already up to date"}, false
 	} else if err == nil {
 		// Different content: keep a copy of what was there.
 		_ = os.WriteFile(path+".whotyped-bak", cur, mode)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), dirMode); err != nil {
 		return Result{Name: "fix." + filepath.Base(path), Status: StatusFail, Detail: err.Error(),
 			Fix: "create " + filepath.Dir(path) + " (is the package that owns it installed?)"}, false
 	}

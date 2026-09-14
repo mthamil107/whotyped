@@ -189,3 +189,23 @@ func TestNewRequiresPath(t *testing.T) {
 		t.Fatal("expected error for empty path")
 	}
 }
+
+// TestRefusesSymlinkAndNonRegularTargets: a planted symlink or FIFO at the
+// alerts path must be refused, not written through.
+func TestRefusesSymlinkAndNonRegularTargets(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "elsewhere.jsonl")
+	link := filepath.Join(dir, "alerts.jsonl")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink not permitted here: %v", err)
+	}
+	if _, err := New(Options{Path: link}); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("symlink accepted: %v", err)
+	}
+	if _, err := os.Stat(target); err == nil {
+		t.Fatal("open followed the symlink and created the target")
+	}
+	if _, err := New(Options{Path: dir}); err == nil {
+		t.Fatal("directory accepted as alerts file")
+	}
+}

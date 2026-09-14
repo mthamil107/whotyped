@@ -19,6 +19,10 @@ func TestPTYDetector(t *testing.T) {
 		{"nothing", func(*session.Track) {}, at(10), map[string]int{}, ""},
 		{"two-execs-not-enough", func(tr *session.Track) { addExecChannels(tr, 2, 0, 1) }, at(10), map[string]int{}, ""},
 		{"three-execs-no-pty", func(tr *session.Track) { addExecChannels(tr, 3, 0, 1) }, at(10), map[string]int{"pty.none": 15}, "0/3 sessions allocated a PTY"},
+		{"tt-exec-channels-still-no-shell", func(tr *session.Track) {
+			addExecChannels(tr, 4, 0, 1)
+			tr.Connections[0].PTYExecCount = 4 // ssh -tt host cmd: a terminal, not a shell
+		}, at(10), map[string]int{"pty.none": 15}, "4 exec channels forced a PTY (-tt)"},
 		{"execs-but-one-pty-connection", func(tr *session.Track) {
 			addExecChannels(tr, 5, 0, 1)
 			tr.Connections = append(tr.Connections, &session.Connection{ID: "cn_2", PTY: true, PTYOpened: at(0)})

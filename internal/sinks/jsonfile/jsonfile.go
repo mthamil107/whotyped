@@ -106,8 +106,21 @@ func (s *Sink) Close() error {
 	return err
 }
 
+// open appends to the alerts file. The daemon runs as root and the path is
+// operator-configured, but the directory may be shared: a symlink planted at
+// the path must not redirect alert writes (O_NOFOLLOW on Linux, an explicit
+// Lstat elsewhere) and an existing non-regular target (FIFO, device) is
+// refused rather than written to.
 func (s *Sink) open() error {
-	f, err := os.OpenFile(s.o.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+	if st, err := os.Lstat(s.o.Path); err == nil {
+		if st.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("jsonfile: open: %s is a symlink; refusing to follow it", s.o.Path)
+		}
+		if !st.Mode().IsRegular() {
+			return fmt.Errorf("jsonfile: open: %s is not a regular file (%s)", s.o.Path, st.Mode().Type())
+		}
+	}
+	f, err := openAppend(s.o.Path)
 	if err != nil {
 		return fmt.Errorf("jsonfile: open: %w", err)
 	}
@@ -115,6 +128,10 @@ func (s *Sink) open() error {
 	if err != nil {
 		f.Close()
 		return fmt.Errorf("jsonfile: stat: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		f.Close()
+		return fmt.Errorf("jsonfile: open: %s is not a regular file", s.o.Path)
 	}
 	s.f, s.size = f, st.Size()
 	return nil

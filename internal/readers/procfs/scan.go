@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/whotyped/whotyped/internal/clean"
 	"github.com/whotyped/whotyped/internal/event"
 	"github.com/whotyped/whotyped/internal/rules"
 )
@@ -152,19 +153,29 @@ func (s *Scanner) seenEvent(p Proc, agent string, envHits map[string]string, fla
 	if len(p.Argv) > 0 {
 		argv0 = p.Argv[0]
 	}
-	ev.Set("comm", p.Comm).
-		Set("exe", p.Exe).
-		Set("argv0", argv0).
-		Set("cmd", truncate(p.Cmdline, maxCmdLen)).
+	// Everything below comm= comes from memory the process owner controls:
+	// strip terminal escapes and control bytes and cap sizes here, before
+	// the values reach the correlator, the alert and an operator's screen.
+	ev.Set("comm", clean.Text(p.Comm, clean.MaxComm)).
+		Set("exe", clean.Text(p.Exe, clean.MaxName)).
+		Set("argv0", clean.Text(argv0, clean.MaxName)).
+		Set("cmd", clean.Text(p.Cmdline, maxCmdLen)).
 		Set("uid", strconv.Itoa(p.UID)).
 		Set("loginuid", strconv.Itoa(p.LoginUID)).
 		Set("ppid", strconv.Itoa(p.PPID)).
 		Set("agent", agent).
 		Set("flags", strings.Join(flags, ","))
 	if p.TTY != "" {
-		ev.Set("tty", p.TTY)
+		ev.Set("tty", clean.Text(p.TTY, clean.MaxComm))
 	}
 	for k, v := range envHits {
+		if k == "AI_AGENT" {
+			// Invalid declarations are forwarded as the marker so the
+			// correlator records the attempt without accepting the claim.
+			v, _ = clean.AIAgent(v)
+		} else {
+			v = clean.Text(v, clean.MaxAIAgent)
+		}
 		ev.Set("env."+k, v)
 	}
 	return ev

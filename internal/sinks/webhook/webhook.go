@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -66,7 +68,9 @@ func (s *Sink) Send(ctx context.Context, a alert.Alert) error {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("webhook: build request: %w", err)
+		// url.Error.Error() embeds the whole URL, and webhook URLs carry
+		// their credential in the path (Slack, Teams, Discord).
+		return fmt.Errorf("webhook: build request for %s: %v", s.hostOnly(), redactURLError(err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "whotyped")
@@ -75,7 +79,7 @@ func (s *Sink) Send(ctx context.Context, a alert.Alert) error {
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: webhook: %v", ErrTransient, err)
+		return fmt.Errorf("%w: webhook: %s: %v", ErrTransient, s.hostOnly(), redactURLError(err))
 	}
 	defer resp.Body.Close()
 	// Drain a little so the connection can be reused; the body is not useful.
@@ -166,7 +170,8 @@ func slackPayload(a alert.Alert) map[string]any {
 		{"type": "mrkdwn", "text": slackEscape(a.ActionsHint)},
 	}})
 	return map[string]any{
-		"text":   title(a) + " — " + a.User + "@" + a.SrcIP + " score " + fmt.Sprint(a.Score),
+		// The fallback text is mrkdwn too (notifications, old clients).
+		"text":   slackEscape(title(a) + " — " + a.User + "@" + a.SrcIP + " score " + fmt.Sprint(a.Score)),
 		"blocks": blocks,
 	}
 }
@@ -174,26 +179,33 @@ func slackPayload(a alert.Alert) map[string]any {
 // ---------------------------------------------------------------------------
 // Teams
 
+// teamsEscape neutralises the Markdown subset Adaptive Card TextBlocks and
+// FactSet values render (emphasis, links, code, lists), so a comm named
+// `[click](https://evil)` or `*urgent*` arrives as text.
+func teamsEscape(s string) string {
+	r := strings.NewReplacer("\\", "\\\\", "*", "\\*", "_", "\\_", "[", "\\[", "]", "\\]", "(", "\\(", ")", "\\)", "`", "\\`", "#", "\\#", "~", "\\~")
+	return r.Replace(s)
+}
+
 func teamsPayload(a alert.Alert) map[string]any {
 	facts := []map[string]string{
-		{"title": "User", "value": a.User},
-		{"title": "Source IP", "value": a.SrcIP},
+		{"title": "User", "value": teamsEscape(a.User)},
+		{"title": "Source IP", "value": teamsEscape(a.SrcIP)},
 		{"title": "Score", "value": fmt.Sprint(a.Score)},
 		{"title": "Level", "value": string(a.Level)},
-		{"title": "Agent", "value": agentOrDash(a)},
+		{"title": "Agent", "value": teamsEscape(agentOrDash(a))},
 		{"title": "Class", "value": string(a.Class)},
-		{"title": "Session", "value": a.SessionID},
+		{"title": "Session", "value": teamsEscape(a.SessionID)},
 	}
 	if a.FreezeWindow != nil {
 		facts = append(facts, map[string]string{"title": "Freeze window",
-			"value": a.FreezeWindow.Name + " until " + a.FreezeWindow.Until.UTC().Format(time.RFC3339)})
+			"value": teamsEscape(a.FreezeWindow.Name) + " until " + a.FreezeWindow.Until.UTC().Format(time.RFC3339)})
 	}
-	ident := func(s string) string { return s }
 	body := []map[string]any{
-		{"type": "TextBlock", "size": "Large", "weight": "Bolder", "text": title(a), "wrap": true},
+		{"type": "TextBlock", "size": "Large", "weight": "Bolder", "text": title(a), "wrap": true}, // event name + configured host: not attacker text
 		{"type": "FactSet", "facts": facts},
-		{"type": "TextBlock", "text": reasonLines(a, "- ", ident), "wrap": true},
-		{"type": "TextBlock", "text": a.ActionsHint, "wrap": true, "isSubtle": true},
+		{"type": "TextBlock", "text": reasonLines(a, "- ", teamsEscape), "wrap": true},
+		{"type": "TextBlock", "text": teamsEscape(a.ActionsHint), "wrap": true, "isSubtle": true},
 	}
 	return map[string]any{
 		"type": "message",
@@ -280,4 +292,29 @@ func discordPayload(a alert.Alert) map[string]any {
 		"content": truncate(title(a)+" — "+a.User+"@"+a.SrcIP+" score "+fmt.Sprint(a.Score), discordContentMax),
 		"embeds":  []map[string]any{embed},
 	}
+}
+
+// hostOnly is the scheme and host of the configured URL, with the path (the
+// credential, for most chat webhooks) and query removed. It is the only form
+// of the URL that may appear in an error or a log line.
+func (s *Sink) hostOnly() string {
+	u, err := url.Parse(s.url)
+	if err != nil || u.Host == "" {
+		return "<invalid url>"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// redactURLError strips the URL from a *url.Error (which net/http wraps
+// around every transport failure) and returns the inner cause; other errors
+// are returned as they are.
+func redactURLError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		if ue.Err != nil {
+			return fmt.Errorf("%s: %v", ue.Op, ue.Err)
+		}
+		return errors.New(ue.Op + " failed")
+	}
+	return err
 }

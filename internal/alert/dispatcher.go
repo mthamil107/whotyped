@@ -352,10 +352,10 @@ func (d *Dispatcher) Observe(t *session.Track, v score.Verdict, freeze *Freeze) 
 		}
 	}()
 
-	// Freeze window: declared or >=info suspected activity is a violation.
+	// Freeze window: declared activity, or anything at or above info (score
+	// >= 40, whatever class the scorer chose for it), is a violation.
 	if freeze != nil {
-		violating := v.Class == score.ClassDeclared ||
-			(v.Class != score.ClassHuman && v.Level.Rank() >= score.LevelInfo.Rank())
+		violating := v.Class == score.ClassDeclared || v.Level.Rank() >= score.LevelInfo.Rank()
 		if violating {
 			d.tm.Lock()
 			seen := memo.freezeName == freeze.Name && memo.freezeAt.Equal(freeze.Until)
@@ -372,7 +372,10 @@ func (d *Dispatcher) Observe(t *session.Track, v score.Verdict, freeze *Freeze) 
 		}
 	}
 
-	// Declared agents: one agent_declared per track, at info.
+	// Declared agents: one agent_declared per track, at info. A declaration
+	// is a label, not a pass: when the behaviour on its own reaches alert or
+	// high, the threshold branch below runs as well (class stays
+	// declared_agent) so a loud declared agent still reaches every sink.
 	if v.Class == score.ClassDeclared {
 		d.tm.Lock()
 		done := !memo.declaredAt.IsZero()
@@ -382,8 +385,11 @@ func (d *Dispatcher) Observe(t *session.Track, v score.Verdict, freeze *Freeze) 
 		d.tm.Unlock()
 		if !done {
 			emit(EvDeclared)
+			prev = score.Level(t.MaxLevel)
 		}
-		return out
+		if v.Level.Rank() < score.LevelAlert.Rank() {
+			return out
+		}
 	}
 
 	// Suspected agents: threshold crossings, then still_active cadence.
@@ -442,8 +448,13 @@ func (d *Dispatcher) Build(t *session.Track, v score.Verdict, ev string, freeze 
 	}
 	switch {
 	case ev == EvFreeze, ev == EvStillActive && freeze != nil:
-		// A freeze violation, and its follow-ups, are high regardless of score.
+		// A freeze violation, and its follow-ups, carry the window's
+		// configured level (freeze_windows[].level, default high) regardless
+		// of score.
 		level = score.LevelHigh
+		if freeze.Level.Rank() > 0 {
+			level = freeze.Level
+		}
 	case ev == EvDeclared:
 		level = score.LevelInfo
 	}
@@ -537,6 +548,9 @@ func (d *Dispatcher) hint(a Alert, freeze *Freeze) string {
 		return fmt.Sprintf("Session %s ended after reaching level %s. Details: whotyped report --session %s", a.SessionID, a.Level, a.SessionID)
 	}
 	if a.Class == score.ClassDeclared {
+		if a.Level.Rank() >= score.LevelAlert.Rank() {
+			return fmt.Sprintf("Declared agent %s shows strong agent behaviour (score %d, %s); confirm this tool is approved for the account and that its key is scoped accordingly. Details: whotyped report --session %s", a.Agent, a.Score, a.Level, a.SessionID)
+		}
 		return fmt.Sprintf("Declared agent %s is still active. Details: whotyped report --session %s", a.Agent, a.SessionID)
 	}
 	who := a.User
@@ -557,6 +571,15 @@ func (d *Dispatcher) levelFor(s int) score.Level {
 		return score.LevelInfo
 	}
 	return score.LevelNone
+}
+
+// Forget releases the memo of a track the correlator dropped without it
+// ending (a provisional track absorbed by its keyed one). Ended does the same
+// for expired tracks; calling both is harmless.
+func (d *Dispatcher) Forget(id string) {
+	d.tm.Lock()
+	delete(d.memos, id)
+	d.tm.Unlock()
 }
 
 func (d *Dispatcher) memo(id string) *trackMemo {

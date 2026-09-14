@@ -153,8 +153,12 @@ func matchFingerprint(t *session.Track, fps []string) bool {
 	return false
 }
 
-// anyOfRatio scores the OR of clauses as the share of text-bearing commands
-// matched by any cmd/argv0/path clause. Banner clauses decide only when no
+// anyOfRatio scores the OR of clauses as the share of commands matched by
+// any cmd/argv0/path clause. Only text-bearing samples (auditd execves,
+// forced commands) can match, but the denominator is at least the number of
+// sshlog exec channels: every ssh command the client sent is one vote, and
+// the audit children a single channel spawns (bash, then git, then sed)
+// cannot outvote the channels themselves. Banner clauses decide only when no
 // command text is available (no auditd): a paramiko banner is shared by
 // Ansible and by MCP SSH servers, so once we can see the commands they, not
 // the banner, say which one it is.
@@ -162,7 +166,7 @@ func anyOfRatio(t *session.Track, clauses []rules.MatchClause) float64 {
 	total, matched := 0, 0
 	for _, e := range t.Execs {
 		if e.Cmd == "" && e.Argv0 == "" {
-			continue // sshlog exec channels carry no text; they cannot vote
+			continue // sshlog exec channels without text cannot vote for a clause
 		}
 		total++
 		if execMatches(e, clauses) {
@@ -170,7 +174,7 @@ func anyOfRatio(t *session.Track, clauses []rules.MatchClause) float64 {
 		}
 	}
 	if total > 0 {
-		return float64(matched) / float64(total)
+		return float64(matched) / float64(max(total, t.ExecChannels()))
 	}
 	for _, cl := range clauses {
 		if cl.BannerRegex == "" {

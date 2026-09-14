@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/whotyped/whotyped/internal/event"
 )
@@ -37,8 +38,14 @@ type Stats struct {
 // enrichedSep separates the raw record from the ENRICHED tail (log_format = ENRICHED).
 const enrichedSep = "\x1d"
 
-// maxCmdLen caps Fields["cmd"] so a pathological argv cannot bloat state or alerts.
-const maxCmdLen = 2048
+// Field caps so a pathological argv cannot bloat state or alerts: the joined
+// command line, the first argument / executable path, and the kernel comm
+// (which is 16 bytes on Linux; 64 leaves room for hex-decoded junk).
+const (
+	maxCmdLen  = 2048
+	maxNameLen = 256
+	maxCommLen = 64
+)
 
 // ParseRecord parses one audit line. ok is false when the line is not an
 // audit record (no type=/msg=audit header). The line may carry an optional
@@ -390,11 +397,17 @@ func (p *Parser) Feed(line string) []event.Event {
 	key := groupKey{rec.TS.UnixNano(), rec.Serial}
 
 	var out []event.Event
-	// Close groups that are clearly behind the stream.
-	for _, k := range append([]groupKey(nil), p.order...) {
+	// Close groups that are clearly behind the stream. The stale keys are
+	// collected first because close mutates p.order; on the normal path of
+	// zero or one open group nothing is allocated per line.
+	var stale []groupKey
+	for _, k := range p.order {
 		if k.serial+1 < rec.Serial {
-			out = append(out, p.close(k)...)
+			stale = append(stale, k)
 		}
+	}
+	for _, k := range stale {
+		out = append(out, p.close(k)...)
 	}
 
 	if rec.Type == "EOE" {
@@ -524,12 +537,18 @@ func (p *Parser) build(k groupKey, recs []Record) (event.Event, bool) {
 		}
 		for _, key := range []string{"exe", "comm", "tty", "uid", "auid", "ppid", "key", "success", "arch", "syscall", "exit"} {
 			if v, ok := f[key]; ok {
+				switch key {
+				case "exe":
+					v = capBytes(v, maxNameLen)
+				case "comm":
+					v = capBytes(v, maxCommLen)
+				}
 				ev.Set(key, v)
 			}
 		}
 	}
 	if cwd != nil {
-		ev.Set("cwd", cwd.Fields["cwd"])
+		ev.Set("cwd", capBytes(cwd.Fields["cwd"], maxNameLen))
 	}
 	argv, argc := argvFromExecve(execves)
 	if len(argv) == 0 && proctitle != nil {
@@ -541,12 +560,8 @@ func (p *Parser) build(k groupKey, recs []Record) (event.Event, bool) {
 		}
 	}
 	if len(argv) > 0 {
-		ev.Set("argv0", argv[0])
-		cmd := strings.Join(argv, " ")
-		if len(cmd) > maxCmdLen {
-			cmd = cmd[:maxCmdLen]
-		}
-		ev.Set("cmd", cmd)
+		ev.Set("argv0", capBytes(argv[0], maxNameLen))
+		ev.Set("cmd", capBytes(joinCapped(argv, maxCmdLen), maxCmdLen))
 	}
 	if argc == "" {
 		argc = strconv.Itoa(len(argv))
@@ -610,4 +625,48 @@ func fromSSHD(f map[string]string) bool {
 func atoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
+}
+
+// capBytes truncates s to max bytes without splitting a UTF-8 sequence.
+func capBytes(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
+}
+
+// joinCapped joins argv with spaces but stops once max bytes are reached, so
+// a 100k-argument execve does not build a multi-megabyte string only to be
+// cut down to 2 KiB.
+func joinCapped(argv []string, max int) string {
+	var b strings.Builder
+	for i, a := range argv {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		if b.Len()+len(a) > max {
+			b.WriteString(a[:max-b.Len()])
+			break
+		}
+		b.WriteString(a)
+	}
+	return b.String()
+}
+
+// flushAllBut closes every open group except the keep most recently opened
+// ones, regardless of age. Replay uses it as its clock-free stale sweep.
+func (p *Parser) flushAllBut(keep int) []event.Event {
+	if len(p.order) <= keep {
+		return nil
+	}
+	stale := append([]groupKey(nil), p.order[:len(p.order)-keep]...)
+	var out []event.Event
+	for _, k := range stale {
+		out = append(out, p.close(k)...)
+	}
+	return out
 }
