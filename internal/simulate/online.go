@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/alert"
-	"github.com/whotyped/whotyped/internal/clues"
-	"github.com/whotyped/whotyped/internal/sinks/jsonfile"
+	"github.com/mthamil107/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/sinks/jsonfile"
 )
 
 // Options configures the online simulation.

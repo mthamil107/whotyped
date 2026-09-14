@@ -1,4 +1,4 @@
-module github.com/whotyped/whotyped
+module github.com/mthamil107/whotyped
 
 go 1.26
 

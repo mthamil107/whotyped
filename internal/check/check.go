@@ -18,8 +18,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/whotyped/whotyped/internal/config"
-	"github.com/whotyped/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/config"
+	"github.com/mthamil107/whotyped/internal/rules"
 )
 
 // Result statuses.
@@ -350,8 +350,10 @@ func (r *runner) checkSSHDVersion() {
 	out := ""
 	for _, cmd := range [][]string{{"sshd", "-V"}, {"ssh", "-V"}} {
 		stdout, stderr, _ := r.opts.Exec(cmd[0], cmd[1:]...)
-		if m := opensshVersionRe.FindString(stdout + stderr); m != "" {
-			out = strings.TrimSpace(firstLine(stderr + stdout))
+		// sshd before 9.x has no -V: it prints "unknown option -- V", then
+		// the version on a later line. Report the line that holds the version.
+		if line := versionLine(stderr + "\n" + stdout); line != "" {
+			out = line
 			break
 		}
 	}
@@ -729,7 +731,7 @@ func coverageDetail(fam string, live bool, f *facts) string {
 		if live {
 			return "client banners logged at DEBUG1: banner.library / banner.automation / banner.human can fire"
 		}
-		return "sshd LogLevel below DEBUG1: banner clues (paramiko, AsyncSSH, ssh2js, Go, +35) cannot fire; an MCP paramiko server scores ~70 instead of 88 without it"
+		return "sshd LogLevel below DEBUG1: banner clues (paramiko, AsyncSSH, ssh2js, Go, +35) cannot fire; a paramiko client loses 35 points without it (it still reached alert on the pilot through pacing and command style with auditd)"
 	case "rhythm":
 		if live {
 			return "\"Starting session\" lines logged: exec-channel bursts, regularity and sub-second gaps are measured"
@@ -855,4 +857,15 @@ func RenderJSON(rep Report, w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(rep)
+}
+
+// versionLine returns the first line of output that carries an OpenSSH
+// version string, trimmed, or "".
+func versionLine(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if opensshVersionRe.MatchString(line) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
 }

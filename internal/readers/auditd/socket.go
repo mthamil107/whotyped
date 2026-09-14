@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 // SocketSource reads newline-delimited audit records from the audisp af_unix

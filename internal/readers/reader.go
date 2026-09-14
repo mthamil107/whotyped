@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 // ErrUnsupportedPlatform is returned by Linux-only readers on other OSes.

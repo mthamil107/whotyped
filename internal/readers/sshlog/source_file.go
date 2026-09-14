@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 // maxLineBytes bounds a single log line; longer lines are dropped rather

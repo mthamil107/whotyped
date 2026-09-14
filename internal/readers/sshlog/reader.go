@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
-	"github.com/whotyped/whotyped/internal/readers"
+	"github.com/mthamil107/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/readers"
 )
 
 // ErrNoSource is returned by Run when neither journald nor a syslog file is

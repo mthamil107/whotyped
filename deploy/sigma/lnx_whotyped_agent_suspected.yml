@@ -9,7 +9,7 @@ description: |
   alerts.jsonl as structured JSON instead, filter on the fields directly:
   event in (agent_detected, agent_high, freeze_violation) and level in (alert, high).
 references:
-  - https://github.com/whotyped/whotyped/blob/main/docs/design/ARCHITECTURE.md
+  - https://github.com/mthamil107/whotyped/blob/main/docs/design/ARCHITECTURE.md
 author: whotyped project
 date: 2026-09-11
 tags:

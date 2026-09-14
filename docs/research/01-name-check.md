@@ -1,5 +1,7 @@
 # Name check: `whotyped` (2026-09-11)
 
+> Update 2026-09-14: USPTO live index shows no WHOTYPED or WHO TYPED filing; the only close mark, WHOTYPE (reg. 5157654, class 45), was cancelled on 2023-09-22. EUIPO, WIPO, UK and India still need a manual check.
+
 | Channel | Status | Evidence |
 |---|---|---|
 | GitHub user/org `whotyped` | FREE | `gh api users/whotyped` -> 404 (same for `orgs/`) |

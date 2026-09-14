@@ -2,7 +2,7 @@
 
 Runs whotyped on every Kubernetes node to watch **SSH sessions to the nodes themselves**. It does not (yet) classify `kubectl exec` sessions into pods; those have no sshd login, `auid=unset`, and need the container-runtime join keys described in `docs/research/03-ssh-auditd-proc.md` §7. That is planned for a later release and will use the same DaemonSet.
 
-Status: chart renders with `helm template`; UNTESTED on a live cluster as of 2026-09-11. The container image `ghcr.io/whotyped/whotyped` is published by the release pipeline; check the release notes for the first tag that ships it.
+Status: chart renders with `helm template`; UNTESTED on a live cluster as of 2026-09-11. No container image is published yet; build one from the release binary and set `image.repository` in `values.yaml`.
 
 ## Install
 

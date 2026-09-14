@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/alert"
-	"github.com/whotyped/whotyped/internal/clues"
-	"github.com/whotyped/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/score"
 )
 
 func sample(i int, ts time.Time) alert.Alert {

@@ -19,7 +19,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	defaults "github.com/whotyped/whotyped/rules"
+	defaults "github.com/mthamil107/whotyped/rules"
 )
 
 // File is one YAML rule or allowlist document. A file may carry any subset
@@ -220,7 +220,7 @@ var Categories = []string{"banner", "rhythm", "pty", "style", "process", "flags"
 // 5) that do not come from the styles pack. Style ids are taken from the pack.
 var KnownClues = []string{
 	"banner.library", "banner.automation", "banner.human",
-	"rhythm.burst", "rhythm.regular", "rhythm.subsecond", "rhythm.sustained",
+	"rhythm.burst", "rhythm.regular", "rhythm.subsecond", "rhythm.sustained", "rhythm.think_time",
 	"pty.none", "pty.interactive",
 	"style.pager_guard",
 	"proc.agent_name", "proc.agent_env", "proc.skip_flags",

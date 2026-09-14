@@ -8,8 +8,8 @@ import (
 	"fmt"
 	gosyslog "log/syslog"
 
-	"github.com/whotyped/whotyped/internal/alert"
-	"github.com/whotyped/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/score"
 )
 
 type sink struct {

@@ -4,9 +4,7 @@ whotyped runs as root and reads authentication logs, so we take reports seriousl
 
 ## Reporting a vulnerability
 
-Use GitHub's private vulnerability reporting: open the repository's **Security** tab and choose **Report a vulnerability**. That creates a private advisory that only maintainers can see. Do not open a public issue and do not post details in discussions or chat.
-
-If you cannot use GitHub, email the maintainers listed in `GOVERNANCE.md`. Encrypt if you can; a PGP key will be published in the same file before the first release.
+Use GitHub's private vulnerability reporting on [github.com/mthamil107/whotyped](https://github.com/mthamil107/whotyped): open the **Security** tab and choose **Report a vulnerability**. That creates a private advisory that only maintainers can see. Do not open a public issue and do not post details in discussions or chat.
 
 Please include: the version (`whotyped version`), distro and OpenSSH version, what you did, what happened, and what you expected. A proof of concept helps; a fix is welcome but not required.
 
@@ -45,9 +43,10 @@ We publish a GitHub security advisory and a CVE (via GitHub's CNA) for anything 
 
 | Version | Supported |
 |---|---|
-| latest minor (0.x) | yes |
-| previous minor | security fixes for 90 days after the next minor ships |
-| anything older | no |
+| `main` (pre-release, no tagged version yet) | yes |
+| anything else | no |
+
+Once releases start, the latest minor (0.x) is supported, and the previous minor gets security fixes for 90 days after the next minor ships.
 
 Before 1.0, minor releases may change configuration and alert schema fields; the alert `schema` field (`whotyped.alert.v1`) is versioned so that consumers can tell.
 

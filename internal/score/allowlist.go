@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/whotyped/whotyped/internal/clues"
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 // DefaultMinMatchRatio is the share of commands an any_of clause must cover

@@ -11,8 +11,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
-	"github.com/whotyped/whotyped/internal/readers"
+	"github.com/mthamil107/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/readers"
 )
 
 // fsFile keeps the passwd tests short.

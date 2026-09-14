@@ -109,7 +109,7 @@ Kinds and field keys are documented in `internal/event/event.go`. `label.py` emi
 }
 ```
 
-`label.py` fills `label`, `class`, `min_score`, `max_score`, `user`, `recorded` and `host_profile` from the recording; edit `mode`, `must_have_clues` and `notes` by hand. If the scorer team publishes a different schema in `testdata/dataset/README.md`, that one wins; update `label.py`.
+`label.py` fills `label`, `class`, `min_score`, `max_score`, `user`, `recorded` and `host_profile` from the recording; edit `mode`, `must_have_clues` and `notes` by hand. If `testdata/dataset/README.md` defines a different schema, that one wins; update `label.py`.
 
 ## Ethics and privacy in the lab
 

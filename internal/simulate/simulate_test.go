@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/whotyped/whotyped/internal/alert"
-	"github.com/whotyped/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/clues"
 )
 
 // TestOfflineScenariosPass replays every embedded scenario with the shipped
@@ -28,7 +28,7 @@ func TestOfflineScenariosPass(t *testing.T) {
 }
 
 func TestOfflineKnownScores(t *testing.T) {
-	cases := map[string]int{"claude-bash": 75, "paramiko-mcp": 88, "local-agent": 100, "human": 0, "vscode": 0, "ansible": 0}
+	cases := map[string]int{"claude-bash": 75, "paramiko-mcp": 95, "local-agent": 100, "human": 0, "vscode": 0, "ansible": 0}
 	for alias, want := range cases {
 		res, err := Evaluate(alias)
 		if err != nil {

@@ -5,8 +5,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/clues"
-	"github.com/whotyped/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/score"
 )
 
 // Schema is the value of the "schema" field.

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 func TestRhythmDetector(t *testing.T) {
@@ -25,7 +25,7 @@ func TestRhythmDetector(t *testing.T) {
 				tr.Connections[0].ExecCount++
 				tr.Execs = append(tr.Execs, session.ExecSample{TS: at(s), Origin: "sshlog"})
 			}
-		}, map[string]int{"rhythm.burst": 20}, ""},
+		}, map[string]int{"rhythm.burst": 20, "rhythm.think_time": 15}, ""},
 		{"regular-but-slow-no-burst", func(tr *session.Track) { addExecChannels(tr, 6, 0, 70) },
 			map[string]int{"rhythm.regular": 10}, ""},
 		{"human-pace", func(tr *session.Track) {
@@ -97,5 +97,51 @@ func TestRhythmStats(t *testing.T) {
 	}
 	if n := maxInSpan([]time.Time{at(0), at(100), at(200), at(301), at(302)}, 5*time.Minute); n != 4 {
 		t.Fatalf("maxInSpan = %d", n)
+	}
+}
+
+// TestThinkTime pins the pacing clue to the real pilot sessions it was
+// derived from and to the shapes it must not fire on.
+func TestThinkTime(t *testing.T) {
+	channels := func(offsets ...float64) *session.Track {
+		tr := &session.Track{Connections: []*session.Connection{{}}}
+		for _, s := range offsets {
+			tr.Connections[0].ExecCount++
+			tr.Execs = append(tr.Execs, session.ExecSample{TS: at(s), Origin: "sshlog"})
+		}
+		return tr
+	}
+	has := func(tr *session.Track) bool {
+		for _, c := range (Rhythm{}).Evaluate(tr, nil, at(1000)) {
+			if c.ID == "rhythm.think_time" {
+				return true
+			}
+		}
+		return false
+	}
+	// Real Claude Code over SSH on the pilot host: 16 channels in 2m28s, gaps 2 to 22 s.
+	pilot := channels(0, 4, 9, 11, 19, 33, 40, 48, 55, 71, 79, 92, 100, 114, 136, 148)
+	if !has(pilot) {
+		t.Error("real agent pacing did not fire")
+	}
+	if has(channels(0, 5, 10, 15, 20, 25, 30, 35, 40, 45)) {
+		t.Error("a regular 5 s loop (a script) fired")
+	}
+	if has(channels(0, 4, 9, 11, 19, 33, 40)) {
+		t.Error("7 channels fired")
+	}
+	if has(channels(0, 0.3, 0.5, 1.1, 1.2, 1.9, 2.0, 2.4, 3.9, 4.0)) {
+		t.Error("sub-second tool bursts fired (that is rhythm.subsecond's job)")
+	}
+	if has(channels(0, 45, 130, 170, 260, 300, 390, 440, 520)) {
+		t.Error("gaps of minutes fired")
+	}
+	// Commands without SSH exec channels (auditd children of one command) never count.
+	tr := &session.Track{Connections: []*session.Connection{{}}}
+	for _, s := range []float64{0, 4, 9, 11, 19, 33, 40, 48, 55, 71} {
+		tr.Execs = append(tr.Execs, session.ExecSample{TS: at(s), Origin: "auditd", Cmd: "ls"})
+	}
+	if has(tr) {
+		t.Error("auditd-only commands fired")
 	}
 }

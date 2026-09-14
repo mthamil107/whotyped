@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 // Source is the event.Event.Source value for everything this package emits.

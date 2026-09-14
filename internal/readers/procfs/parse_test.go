@@ -12,7 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/rules"
 )
 
 const fixtureRoot = "../../../testdata/procfs"

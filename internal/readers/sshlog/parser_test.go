@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 // now is fixed so year inference is deterministic.

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
-	"github.com/whotyped/whotyped/internal/readers"
+	"github.com/mthamil107/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/readers"
 )
 
 func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }

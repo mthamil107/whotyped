@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 const (
@@ -15,6 +15,7 @@ const (
 	WeightRhythmRegular   = 10
 	WeightRhythmSubsecond = 10
 	WeightRhythmSustained = 10
+	WeightRhythmThinkTime = 15
 
 	burstCount          = 6
 	burstSpan           = 5 * time.Minute
@@ -24,6 +25,17 @@ const (
 	subsecondMedian     = 1500 * time.Millisecond
 	subsecondMaxGap     = 60 * time.Second
 	sustainedCount      = 25
+
+	// Think-time pacing: a language model deciding each next command. Measured
+	// on a real pilot (Claude Code and a paramiko client over SSH, 2026-09-14):
+	// 13 to 16 exec channels, median gaps of 3 to 8 s, cv above 1. Scripts are
+	// regular (low cv) or sub-second; people use an interactive shell instead
+	// of a dozen separate exec channels. Provisional until pilots add a human
+	// baseline.
+	thinkMinChannels = 8
+	thinkMinMedian   = 1500 * time.Millisecond
+	thinkMaxMedian   = 30 * time.Second
+	thinkMinCV       = 0.5
 
 	// dedupeGap merges an sshlog exec channel with the auditd execve records
 	// it spawns (bash, then the tool) so one command is counted once.
@@ -67,6 +79,9 @@ func (Rhythm) Evaluate(t *session.Track, _ *rules.Pack, now time.Time) []Clue {
 	if med > 0 && med < subsecondMedian {
 		out = append(out, Clue{ID: "rhythm.subsecond", Category: CatRhythm, Weight: WeightRhythmSubsecond,
 			Evidence: fmt.Sprintf("median gap %s over %d %s", roundDur(med), n, noun), TS: now})
+	}
+	if c, ok := thinkTime(t, now); ok {
+		out = append(out, c)
 	}
 	if n >= sustainedCount {
 		out = append(out, Clue{ID: "rhythm.sustained", Category: CatRhythm, Weight: WeightRhythmSustained,
@@ -163,4 +178,32 @@ func roundDur(d time.Duration) string {
 		return d.Round(100 * time.Millisecond).String()
 	}
 	return d.Round(time.Second).String()
+}
+
+// thinkTime looks only at SSH exec channels (one per tool call), not at the
+// processes a command spawns, and fires on the irregular multi-second pacing
+// of a model choosing each next command.
+func thinkTime(t *session.Track, now time.Time) (Clue, bool) {
+	var times []time.Time
+	for _, e := range t.Execs {
+		if e.Origin == "sshlog" {
+			times = append(times, e.TS)
+		}
+	}
+	if len(times) < thinkMinChannels {
+		return Clue{}, false
+	}
+	sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
+	gaps := make([]time.Duration, 0, len(times)-1)
+	for i := 1; i < len(times); i++ {
+		gaps = append(gaps, times[i].Sub(times[i-1]))
+	}
+	med := medianGap(gaps, subsecondMaxGap)
+	cv := coefficientOfVariation(gaps)
+	if med < thinkMinMedian || med > thinkMaxMedian || cv < thinkMinCV {
+		return Clue{}, false
+	}
+	return Clue{ID: "rhythm.think_time", Category: CatRhythm, Weight: WeightRhythmThinkTime,
+		Evidence: fmt.Sprintf("%d exec channels paced like a model choosing each command: median gap %s, cv %.2f", len(times), roundDur(med), cv),
+		TS:       now}, true
 }

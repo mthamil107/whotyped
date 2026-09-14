@@ -3,8 +3,8 @@ package clues
 import (
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 // Identity reports a declared agent (AI_AGENT in the session environment or

@@ -11,8 +11,8 @@ description: |
   it as a triage signal and confirm the session via "ses" and the sshd log, or let whotyped
   do the join. comm is truncated to 15 characters by the kernel.
 references:
-  - https://github.com/whotyped/whotyped/blob/main/docs/research/02-agent-fingerprints.md
-  - https://github.com/whotyped/whotyped/blob/main/docs/research/03-ssh-auditd-proc.md
+  - https://github.com/mthamil107/whotyped/blob/main/docs/research/02-agent-fingerprints.md
+  - https://github.com/mthamil107/whotyped/blob/main/docs/research/03-ssh-auditd-proc.md
 author: whotyped project
 date: 2026-09-11
 tags:

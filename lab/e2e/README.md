@@ -66,7 +66,9 @@ The first runs found three problems that fixture tests had not:
 
 - No auditd in a container, so remote sessions get no command text. That is
   why agent-shaped sessions stop at 55; with auditd the fixture scenarios
-  reach 75 to 88. Verifying the auditd path needs a VM: see
+  reach 75 to 95, and real agents on the 2026-09-14 pilot server reached 73
+  to 80 (`docs/research/06-pilot-2026-09-14.md`). For an auditd lab of your
+  own, see
   `lab/cloud-init-ubuntu.yaml` and `lab/cloud-init-rocky.yaml`.
 - The `claude` here is a stand-in script, not the real CLI. It has the real
   process name, argv and environment marker, and nothing else.

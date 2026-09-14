@@ -5,7 +5,7 @@ package auditd
 import (
 	"net"
 
-	"github.com/whotyped/whotyped/internal/readers"
+	"github.com/mthamil107/whotyped/internal/readers"
 )
 
 // errUnsupported makes SocketSource.Run return ErrUnsupportedPlatform.

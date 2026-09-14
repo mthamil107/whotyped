@@ -25,9 +25,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/whotyped/whotyped/internal/version.Version={{ .Version }}
-      - -X github.com/whotyped/whotyped/internal/version.Commit={{ .ShortCommit }}
-      - -X github.com/whotyped/whotyped/internal/version.Date={{ .CommitDate }}
+      - -X github.com/mthamil107/whotyped/internal/version.Version={{ .Version }}
+      - -X github.com/mthamil107/whotyped/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/mthamil107/whotyped/internal/version.Date={{ .CommitDate }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
@@ -36,6 +36,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
+      - NOTICE
       - README.md
       - CHANGELOG.md
       - deploy/config.example.yaml
@@ -79,8 +80,8 @@ nfpms:
     package_name: whotyped
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     vendor: whotyped
-    homepage: https://github.com/whotyped/whotyped
-    maintainer: Thamil <mthamil107@gmail.com>
+    homepage: https://github.com/mthamil107/whotyped
+    maintainer: Thamil <mthamil107@users.noreply.github.com>
     description: |-
       Tells server operators when an AI agent, rather than a human, is working
       on a Linux host over SSH. Reads sshd logs, auditd and /proc; scores
@@ -120,6 +121,8 @@ nfpms:
         dst: /usr/share/whotyped/falco
       - src: LICENSE
         dst: /usr/share/doc/whotyped/LICENSE
+      - src: NOTICE
+        dst: /usr/share/doc/whotyped/NOTICE
       - dst: /var/lib/whotyped
         type: dir
         file_info:
@@ -140,7 +143,7 @@ nfpms:
 
 release:
   github:
-    owner: whotyped
+    owner: mthamil107
     name: whotyped
   prerelease: auto
   draft: false
@@ -150,7 +153,7 @@ release:
 
     ```sh
     cosign verify-blob --bundle checksums.txt.bundle \
-      --certificate-identity-regexp 'https://github.com/whotyped/whotyped/.*' \
+      --certificate-identity-regexp 'https://github.com/mthamil107/whotyped/.*' \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
     sha256sum -c checksums.txt --ignore-missing
     ```

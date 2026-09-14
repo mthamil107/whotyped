@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/rules"
 )
 
 // TestNewDefaultsAndNetSwitch: zero Options give the documented defaults with

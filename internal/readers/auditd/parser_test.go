@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 const fixtureDir = "../../../testdata/auditd"

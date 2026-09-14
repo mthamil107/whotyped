@@ -1,7 +1,34 @@
 ---
+# Packages are downloaded first and checked against the release's
+# checksums.txt (goreleaser `checksum.name_template`) before root installs them.
+- name: Create root-only download directory
+  ansible.builtin.file:
+    path: /var/cache/whotyped
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - whotyped_install_method == 'package'
+    - ansible_os_family in ['Debian', 'RedHat']
+
+- name: Download whotyped package and verify its SHA-256
+  ansible.builtin.get_url:
+    url: "{{ whotyped_release_base_url }}/v{{ whotyped_version }}/{{ whotyped_package_file }}"
+    dest: "/var/cache/whotyped/{{ whotyped_package_file }}"
+    checksum: "sha256:{{ whotyped_release_base_url }}/v{{ whotyped_version }}/checksums.txt"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    whotyped_package_file: "whotyped_{{ whotyped_version }}_linux_{{ whotyped_arch }}.{{ 'deb' if ansible_os_family == 'Debian' else 'rpm' }}"
+  when:
+    - whotyped_install_method == 'package'
+    - ansible_os_family in ['Debian', 'RedHat']
+
 - name: Install whotyped package (Debian family)
   ansible.builtin.apt:
-    deb: "{{ whotyped_release_base_url }}/v{{ whotyped_version }}/whotyped_{{ whotyped_version }}_linux_{{ whotyped_arch }}.deb"
+    deb: "/var/cache/whotyped/whotyped_{{ whotyped_version }}_linux_{{ whotyped_arch }}.deb"
   when:
     - whotyped_install_method == 'package'
     - ansible_os_family == 'Debian'
@@ -9,8 +36,9 @@
 
 - name: Install whotyped package (RHEL family)
   ansible.builtin.dnf:
-    name: "{{ whotyped_release_base_url }}/v{{ whotyped_version }}/whotyped_{{ whotyped_version }}_linux_{{ whotyped_arch }}.rpm"
+    name: "/var/cache/whotyped/whotyped_{{ whotyped_version }}_linux_{{ whotyped_arch }}.rpm"
     state: present
+    # The rpm is not GPG-signed; integrity comes from the checksum check above.
     disable_gpg_check: true
   when:
     - whotyped_install_method == 'package'

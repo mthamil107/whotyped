@@ -4,9 +4,9 @@ description: Node-level DaemonSet that detects AI agents acting over SSH on Kube
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
-home: https://github.com/whotyped/whotyped
+home: https://github.com/mthamil107/whotyped
 sources:
-  - https://github.com/whotyped/whotyped
+  - https://github.com/mthamil107/whotyped
 keywords:
   - security
   - ssh

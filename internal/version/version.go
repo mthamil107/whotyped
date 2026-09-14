@@ -1,6 +1,6 @@
 // Package version carries the build identity injected by the linker:
 //
-//	-ldflags "-X github.com/whotyped/whotyped/internal/version.Version=v0.1.0 ..."
+//	-ldflags "-X github.com/mthamil107/whotyped/internal/version.Version=v0.1.0 ..."
 //
 // The defaults describe a `go build` or `go run` straight from the tree.
 package version

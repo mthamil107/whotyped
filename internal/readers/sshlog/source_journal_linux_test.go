@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 // fakeJournalctl installs a shell script named journalctl at the front of

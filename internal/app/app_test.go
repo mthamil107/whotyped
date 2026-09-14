@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/alert"
-	"github.com/whotyped/whotyped/internal/config"
+	"github.com/mthamil107/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/config"
 )
 
 func replayDryRun(t *testing.T, scenario string, cfg config.Config) []alert.Alert {

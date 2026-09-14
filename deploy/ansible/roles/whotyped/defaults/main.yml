@@ -1,7 +1,7 @@
 ---
 # Release
 whotyped_version: "0.1.0"
-whotyped_release_base_url: "https://github.com/whotyped/whotyped/releases/download"
+whotyped_release_base_url: "https://github.com/mthamil107/whotyped/releases/download"
 
 # package | binary
 whotyped_install_method: package

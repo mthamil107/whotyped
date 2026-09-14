@@ -17,7 +17,7 @@ What problem this solves or what evidence prompted it (a false positive, a new a
 
 ## Checklist
 
-- [ ] Commits are signed off (`git commit -s`, DCO)
+- [ ] By submitting this pull request I agree to license my contribution under Apache-2.0
 - [ ] No new dependencies, no network calls outside configured sinks
 - [ ] Evidence strings stay privacy-redacted
 - [ ] Docs updated if behaviour or config changed

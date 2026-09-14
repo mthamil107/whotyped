@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/clues"
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 func newTestScorer() *Scorer { return New(DefaultConfig()) }

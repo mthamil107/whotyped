@@ -1,36 +1,53 @@
 # Quickstart (5 minutes)
 
-whotyped is one static binary plus a systemd unit. It needs root (to read `/var/log/audit/audit.log` and other users' `/proc/<pid>/environ`). Supported: Linux amd64 and arm64, systemd, OpenSSH 8.0 or newer. Tested distros for v0.1: Ubuntu 22.04/24.04, Debian 12/13, RHEL 9/10 and Rocky equivalents.
+whotyped is one static binary plus a systemd unit. It needs root (to read `/var/log/audit/audit.log` and other users' `/proc/<pid>/environ`). Supported: Linux amd64 and arm64, systemd, OpenSSH 8.0 or newer. Exercised end to end on Ubuntu 24.04 (container lab) and Ubuntu 20.04 with OpenSSH 8.2 (pilot server); log parsers are tested against fixtures from Ubuntu 22.04, RHEL 9 and OpenSSH 8.9 to 10.0. systemd older than 247 ignores the unit's `ProtectProc` and `ProcSubset` keys with a harmless warning.
 
 ## 1. Install
 
-Debian/Ubuntu:
+Build from source (works today; needs Go 1.26 and git):
 
 ```sh
-curl -fsSLO https://github.com/whotyped/whotyped/releases/latest/download/whotyped_linux_amd64.deb
-sudo dpkg -i whotyped_linux_amd64.deb
-```
-
-RHEL/Rocky/Fedora:
-
-```sh
-curl -fsSLO https://github.com/whotyped/whotyped/releases/latest/download/whotyped_linux_amd64.rpm
-sudo rpm -i whotyped_linux_amd64.rpm
-```
-
-Plain binary (any distro):
-
-```sh
-curl -fsSLO https://github.com/whotyped/whotyped/releases/latest/download/whotyped_linux_amd64.tar.gz
-tar xzf whotyped_linux_amd64.tar.gz
-sudo install -m 0755 whotyped /usr/local/bin/whotyped
+git clone https://github.com/mthamil107/whotyped && cd whotyped
+go build -o whotyped ./cmd/whotyped
+sudo install -m 0755 whotyped /usr/bin/whotyped
 sudo install -d -m 0750 /etc/whotyped /var/lib/whotyped
 sudo install -m 0640 deploy/config.example.yaml /etc/whotyped/config.yaml
 sudo install -m 0644 deploy/whotyped.service /etc/systemd/system/whotyped.service
 sudo systemctl daemon-reload
 ```
 
-Replace `amd64` with `arm64` where needed. Release assets carry SHA-256 checksums signed with cosign (keyless); verify with `cosign verify-blob` if your policy requires it. Exact asset names are listed on the release page; adjust if they differ from the examples above.
+Release packages appear from the first tagged release (v0.1.0). Asset names follow the pattern `whotyped_<version>_linux_<arch>.deb`, `.rpm` and `.tar.gz`, where `<version>` has no leading `v`. The commands below assume that release exists.
+
+Debian/Ubuntu:
+
+```sh
+VERSION=0.1.0
+curl -fsSLO https://github.com/mthamil107/whotyped/releases/download/v${VERSION}/whotyped_${VERSION}_linux_amd64.deb
+sudo dpkg -i whotyped_${VERSION}_linux_amd64.deb
+```
+
+RHEL/Rocky/Fedora:
+
+```sh
+VERSION=0.1.0
+curl -fsSLO https://github.com/mthamil107/whotyped/releases/download/v${VERSION}/whotyped_${VERSION}_linux_amd64.rpm
+sudo rpm -i whotyped_${VERSION}_linux_amd64.rpm
+```
+
+Plain binary (any distro):
+
+```sh
+VERSION=0.1.0
+curl -fsSLO https://github.com/mthamil107/whotyped/releases/download/v${VERSION}/whotyped_${VERSION}_linux_amd64.tar.gz
+tar xzf whotyped_${VERSION}_linux_amd64.tar.gz
+sudo install -m 0755 whotyped /usr/bin/whotyped
+sudo install -d -m 0750 /etc/whotyped /var/lib/whotyped
+sudo install -m 0640 deploy/config.example.yaml /etc/whotyped/config.yaml
+sudo install -m 0644 deploy/whotyped.service /etc/systemd/system/whotyped.service
+sudo systemctl daemon-reload
+```
+
+Replace `amd64` with `arm64` where needed. Each release carries `checksums.txt` (SHA-256), signed with cosign (keyless); verify with `sha256sum -c checksums.txt --ignore-missing` and `cosign verify-blob` as shown in the release notes.
 
 ## 2. Check the host and fix what is missing
 

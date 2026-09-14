@@ -16,9 +16,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/alert"
-	"github.com/whotyped/whotyped/internal/score"
-	"github.com/whotyped/whotyped/internal/sinks/jsonfile"
+	"github.com/mthamil107/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/sinks/jsonfile"
 )
 
 // Exit codes: 0 report produced, 1 no alerts in range, 2 error.

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/score"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 // TestDeclaredButLoudReachesAlert: a declaration labels the track, it does

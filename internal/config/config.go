@@ -19,7 +19,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/whotyped/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/score"
 )
 
 // Config is the whole daemon configuration.

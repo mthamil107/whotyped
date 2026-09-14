@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 func TestNetConnDetector(t *testing.T) {

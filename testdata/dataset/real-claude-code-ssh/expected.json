@@ -1,0 +1,8 @@
+{
+  "score_min": 65,
+  "score_max": 85,
+  "class": "suspected_agent",
+  "level": "alert",
+  "mode": "remote_agent",
+  "notes": "Real session, anonymised: Claude Code running a read-only health review of an Ubuntu 20.04 host through OpenSSH, one command per connection, 16 commands over about 2.5 minutes with model think time between them. Recorded with LogLevel VERBOSE, auditd and the sshrc hook (pilot, 2026-09-14). Includes the host's real session plumbing (MOTD scripts, sshrc)."
+}

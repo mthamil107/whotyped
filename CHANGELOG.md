@@ -6,6 +6,25 @@ All notable changes to whotyped are recorded here. The format follows
 
 ## [Unreleased]
 
+### Found by the pilot on a real server (2026-09-14)
+
+See `docs/research/06-pilot-2026-09-14.md`.
+
+- New `rhythm.think_time` clue (+15): 8 or more SSH exec channels with a
+  median gap of 1.5 to 30 s and a coefficient of variation of at least 0.5,
+  the pacing of a model choosing each command. Real Claude Code and paramiko
+  sessions went from 58 and 65 (`info`) to 73 and 75 (`alert`) on the live
+  daemon. Provisional: tuned on three real sessions, pending human baselines.
+- Session plumbing is no longer counted as activity: Ubuntu's MOTD scripts,
+  the sshrc hook, `systemd --user` and everything they spawn are dropped, and
+  the login shell sshd starts is recorded as the command it wraps, so its
+  `-c` is not a tool-wrapper clue.
+- Failed and unknown-user auditd logins no longer create tracks.
+- `check` reports the OpenSSH version correctly on sshd builds without `-V`.
+- Three anonymised real sessions added to the labelled dataset
+  (`testdata/dataset/real-*`). The paramiko MCP fixture now scores 95.
+- The Go module path is `github.com/mthamil107/whotyped`.
+
 ### Found by the end-to-end lab
 
 - Declarations now reach whotyped for one-command-per-step agents. A new
@@ -126,7 +145,7 @@ All notable changes to whotyped are recorded here. The format follows
 - Client banner clue needs sshd `LogLevel DEBUG1`.
 - No keystroke timing (tlog / eBPF are on the roadmap); an agent told to slow
   down and allocate a PTY looks like a human.
-- The shipped `vscode-remote` profile does not yet match the `vscode-remote`
-  dataset scenario (scores 43 instead of <= 30).
+- `rhythm.think_time` has no human baseline yet; expect tuning after pilots.
+- One real host tested (Ubuntu 20.04, OpenSSH 8.2) plus the container lab.
 
-[Unreleased]: https://github.com/whotyped/whotyped/compare/main...HEAD
+[Unreleased]: https://github.com/mthamil107/whotyped/commits/main

@@ -1,5 +1,5 @@
 # whotyped build helpers. Pure Go, CGO_ENABLED=0; only gopkg.in/yaml.v3.
-MODULE   := github.com/whotyped/whotyped
+MODULE   := github.com/mthamil107/whotyped
 BIN      := whotyped
 DIST     := dist
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)

@@ -19,10 +19,10 @@ Because v0.1 must install on a stock host in five minutes with no kernel require
 Later. The parsers are portable and the daemon builds on Windows for development, but the readers are Linux-only in v0.1. Windows OpenSSH server logs and ETW are a different project. Kubernetes `kubectl exec`, `docker exec` and AWS SSM sessions on Linux come first (they have `auid=unset` and need different join keys).
 
 **How is this different from Teleport?**
-Teleport's Agentic Identity Framework gives enrolled agents their own identity and proxies their sessions. That is provisioning: it works when the agent is enrolled and Teleport is in the path. whotyped is detection: it runs on the target host and works when the agent is unknown, unenrolled or using a human's key. Use both if you have Teleport; whotyped covers the sessions that did not go through it.
+Teleport's [Agentic Identity Framework](https://goteleport.com/docs/agentic-identity-framework/) gives enrolled agents their own identity and proxies their sessions. That is provisioning: it works when the agent is enrolled and Teleport is in the path. whotyped is detection: it runs on the target host and works when the agent is unknown, unenrolled or using a human's key. Use both if you have Teleport; whotyped covers the sessions that did not go through it.
 
 **How is this different from Prempti (Falco) or agent hooks?**
-Prempti intercepts Claude Code and Codex tool calls through the agents' own hook mechanism, on the machine where the agent runs. It needs the agent to cooperate and it cannot see an agent's Bash tool sshing to another server. whotyped sits on the server being acted on and needs nothing from the agent.
+[Prempti](https://github.com/falcosecurity/prempti) intercepts Claude Code and Codex tool calls through the agents' own hook mechanism, on the machine where the agent runs. It needs the agent to cooperate and it cannot see an agent's Bash tool sshing to another server. whotyped sits on the server being acted on and needs nothing from the agent. More on both in `docs/research/04-prior-art-and-integrations.md`.
 
 **How is this different from an EDR (CrowdStrike, Defender, SentinelOne)?**
 EDRs have started inventorying and hooking AI agents, mainly on developer laptops and Windows/macOS. They answer "which agents are installed and what are they doing on this endpoint". whotyped answers "is this SSH session on this Linux server a person", attributes it to an account and key, and ships as an open-source package you can read. It is not a replacement for endpoint protection.
@@ -31,7 +31,7 @@ EDRs have started inventorying and hooking AI agents, mainly on developer laptop
 No. It is detect-only. If you want to act, use the webhook to open a ticket, page someone, or drive your own automation (for example `pkill -t pts/N`), and think hard about the false-positive rate first.
 
 **Does it need root?**
-Yes in v0.1: `/var/log/audit/audit.log` is `0600 root` and reading another user's `/proc/<pid>/environ` needs `CAP_SYS_PTRACE`. The systemd unit hardens what it can (`ProtectSystem=strict`, read-only paths, no new privileges). A least-privilege mode with `CAP_DAC_READ_SEARCH` + `CAP_SYS_PTRACE` and a group-readable audit log is on the list.
+Yes in v0.1: `/var/log/audit/audit.log` is `0600 root` and reading another user's `/proc/<pid>/environ` needs `CAP_SYS_PTRACE`. The service runs as root, with its capability bounding set limited to `CAP_DAC_READ_SEARCH`, `CAP_SYS_PTRACE` and `CAP_SYSLOG` plus systemd sandboxing (`ProtectSystem=strict`, read-only paths, no new privileges). A non-root mode is future work.
 
 **What does a declared agent look like?**
 If a client sends `AI_AGENT=claude-code`, sshd has `AcceptEnv AI_AGENT`, and the `/etc/ssh/sshrc` hook logs it (or, for a long session, the session shell carries `AI_AGENT` in its environment), whotyped emits `event=agent_declared`, `class=declared_agent`, `agent=claude-code` at level `info`. A declaration is a label, not a pass: the score is still computed, and if the behaviour alone reaches `alert` or `high` the usual `agent_detected` / `agent_high` events follow with `class=declared_agent`, so a loud declared agent still reaches Slack and email. A declaration is only accepted from the session itself (an accepted `SetEnv`, or a process joined to the session by audit session id or by being a child of the sshd session process); a stray `AI_AGENT=x sleep infinity` left in the background does not relabel the account's next session, and the label is withdrawn when the declaring process is gone. Values are limited to 64 bytes of `[A-Za-z0-9._@:+-]`; anything else is recorded as `invalid-declaration` and ignored.
@@ -49,7 +49,7 @@ The daemon itself: a few MB of RAM and negligible CPU; it tails files and polls 
 The default rule pack covers Claude Code, Codex CLI, Gemini CLI, Cursor CLI, Aider, Goose, OpenCode, GitHub Copilot CLI, Amazon Q Developer CLI, Kiro CLI, plus the common MCP SSH servers by client banner and behaviour (`rules/agents.yaml`). Adding one is a YAML entry plus a fixture; see CONTRIBUTING.md.
 
 **Can I run it without auditd?**
-Yes. You lose command-style clues for remote sessions and the on-host agent process detection becomes polling-based via `/proc`. The worked examples drop from about 88 to 70 for a paramiko MCP server; the Claude Code Bash-tool-over-SSH case still reaches about 75 from sshd lines alone. `whotyped check` reports the reduced coverage.
+Yes. You lose command-style clues for remote sessions and the on-host agent process detection becomes polling-based via `/proc`. From sshd lines alone (no auditd) a remote agent scores about 45 to 55, which is `info`, not `alert`. `whotyped check` reports the reduced coverage.
 
 **Where is the data?**
 `/var/lib/whotyped/alerts.jsonl` (alerts), `/var/lib/whotyped/state.json` (open sessions, overwritten every 30 s), `/etc/whotyped/config.yaml`. Nothing else.

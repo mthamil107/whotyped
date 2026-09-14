@@ -2,7 +2,7 @@
 
 package syslog
 
-import "github.com/whotyped/whotyped/internal/alert"
+import "github.com/mthamil107/whotyped/internal/alert"
 
 // New validates its arguments and then reports that syslog is unavailable
 // here, so config errors surface the same way on every platform.

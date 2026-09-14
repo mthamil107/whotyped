@@ -100,6 +100,7 @@ Score = min(100, sum over categories of min(cap, sum of clue weights)), then neg
 | rhythm | rhythm.regular (CV of gaps < 0.35, >=6 samples) | 10 | |
 | rhythm | rhythm.subsecond (median gap < 1.5 s) | 10 | |
 | rhythm | rhythm.sustained (>=25 exec channels in window) | 10 | |
+| rhythm | rhythm.think_time (>=8 SSH exec channels, median gap 1.5-30 s, cv >= 0.5; provisional, from the 2026-09-14 pilot) | 15 | |
 | pty | pty.none (>=3 sessions, none with PTY) | 15 | 15 |
 | pty | pty.interactive (PTY shell > 5 min) | -15 | |
 | style | style.heredoc | 10 | 30 |
@@ -121,7 +122,7 @@ Freeze windows: inside an active window any declared activity, or any verdict at
 
 Attacker-controlled text (process names, executable paths, `AI_AGENT`, banners) is cleaned at ingestion (`internal/clean`: ANSI sequences stripped, control bytes replaced, comm 64 / paths 256 bytes) in the procfs reader, the auditd parser and the correlator, and chat sinks escape the markdown their cards render. Pre-auth failures (`ssh.auth_fail`) never create tracks or touch `userLast`; they are counted on an existing open track of the same user and source and in a 1024-entry per-IP LRU.
 
-Worked examples (expected score): human admin interactive 0; Ansible run 0–5 after profile; VS Code Remote ~8 after profile; Claude Code Bash tool over SSH 75; MCP paramiko server 88 (70 without auditd); claude on the box with skip flag 100.
+Worked examples (expected score): human admin interactive 0; Ansible run 0 after profile; VS Code Remote 0 after profile; Claude Code Bash tool over SSH 75; MCP paramiko server with DEBUG1 banner 95; claude on the box with skip flag 100. Real pilot sessions (anonymised in `testdata/dataset/real-*`): Claude Code over SSH 73, paramiko client 80, declared Claude Code 60 labelled `declared_agent`.
 
 ## 6. Allowlist profiles
 

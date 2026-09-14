@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/clean"
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/clean"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 var t0 = time.Date(2026, 9, 11, 13, 50, 0, 0, time.UTC)
@@ -639,5 +639,80 @@ func TestUnattributedAIAgentDoesNotMakeTrackLocal(t *testing.T) {
 	}
 	if tr.Mode != "remote_agent" {
 		t.Fatalf("mode = %q, want remote_agent", tr.Mode)
+	}
+}
+
+// auditEv builds an audit event the way the auditd reader emits it.
+func auditEv(kind event.Kind, ts time.Time, pid, ses int, kv ...string) event.Event {
+	e := ev(kind, ts, kv...)
+	e.Source, e.PID, e.Ses = "auditd", pid, ses
+	return e
+}
+
+func TestFailedAuditLoginsCreateNoTracks(t *testing.T) {
+	c := New(Options{})
+	// Internet password guessing, as auditd records it on the pilot host.
+	for i := 0; i < 50; i++ {
+		c.Apply(auditEv(event.AuditLogin, at(float64(i)), 9000+i, -1, "type", "USER_LOGIN", "acct", "root", "addr", "198.51.100.7", "res", "failed"))
+		c.Apply(auditEv(event.AuditLogin, at(float64(i)), 9500+i, -1, "type", "USER_LOGIN", "acct", "(unknown user)", "addr", "198.51.100.8", "res", "failed"))
+	}
+	if n := len(c.Tracks()); n != 0 {
+		t.Fatalf("failed logins created %d tracks", n)
+	}
+	// A successful login still does.
+	c.Apply(auditEv(event.AuditLogin, at(60), 777, 42, "type", "USER_START", "acct", "alice", "addr", "203.0.113.5", "res", "success"))
+	if n := len(c.Tracks()); n != 1 {
+		t.Fatalf("successful login: %d tracks", n)
+	}
+}
+
+func TestSessionPlumbingIsNotActivity(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "alice", "203.0.113.5", 51000, 700, "fp", fp))
+	c.Apply(auditEv(event.AuditLogin, at(0), 700, 42, "type", "USER_START", "acct", "alice", "addr", "203.0.113.5", "res", "success"))
+	c.Apply(sshEv(event.SSHSessionStart, at(1), "alice", "203.0.113.5", 51000, 710, "stype", "command"))
+	plumbing := []struct {
+		pid, ppid int
+		cmd       string
+	}{
+		// Ubuntu's pam_motd: the root and one of the scripts it runs.
+		{801, 700, "sh -c /usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic.new"},
+		{802, 801, "run-parts --lsbsysinit /etc/update-motd.d"},
+		{803, 802, "/bin/sh /etc/update-motd.d/00-header"},
+		{804, 803, "uname -o"},
+		// The sshrc hook and its pipeline.
+		{805, 710, "sh -c /bin/sh /etc/ssh/sshrc"},
+		{806, 805, "/bin/sh /etc/ssh/sshrc"},
+		{807, 999, "tr -cd A-Za-z0-9._@:+-"},
+		{808, 806, "logger -p authpriv.info -t whotyped-declare -- AI_AGENT=x user=alice from=203.0.113.5 port=51000"},
+		// systemd --user for the first login of a uid.
+		{809, 1, "/lib/systemd/systemd --user"},
+	}
+	for i, p := range plumbing {
+		c.Apply(auditEv(event.AuditExecve, at(1.1+float64(i)*0.01), p.pid, 42, "ppid", strconv.Itoa(p.ppid), "cmd", p.cmd, "argv0", strings.Fields(p.cmd)[0]))
+	}
+	for _, e := range tr.Execs {
+		if e.Origin != "sshlog" {
+			t.Errorf("plumbing recorded as activity: %+v", e)
+		}
+	}
+	// The session shell sshd starts for the client's command: its "-c" is transport.
+	c.Apply(auditEv(event.AuditExecve, at(1.5), 811, 42, "ppid", "710", "cmd", "bash -c df -h / 2>&1 | tail -n 1", "argv0", "bash"))
+	// A wrapper the client itself sent, nested inside the command, still counts.
+	c.Apply(auditEv(event.AuditExecve, at(1.6), 812, 42, "ppid", "811", "cmd", "bash -lc cd /srv && make", "argv0", "bash"))
+	var shell, nested *ExecSample
+	for i := range tr.Execs {
+		switch tr.Execs[i].PID {
+		case 811:
+			shell = &tr.Execs[i]
+		case 812:
+			nested = &tr.Execs[i]
+		}
+	}
+	if shell == nil || shell.Cmd != "df -h / 2>&1 | tail -n 1" || shell.Origin != "auditd-session" {
+		t.Fatalf("session shell = %+v", shell)
+	}
+	if nested == nil || nested.Cmd != "bash -lc cd /srv && make" || nested.Origin != "auditd" {
+		t.Fatalf("nested wrapper = %+v", nested)
 	}
 }

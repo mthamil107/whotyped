@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 // Version is the current on-disk format. Files with a higher version are

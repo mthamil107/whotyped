@@ -1,7 +1,7 @@
 // Package score turns a Track plus rules into a Verdict.
 package score
 
-import "github.com/whotyped/whotyped/internal/clues"
+import "github.com/mthamil107/whotyped/internal/clues"
 
 // Class is the headline classification of a track.
 type Class string

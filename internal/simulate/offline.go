@@ -14,11 +14,11 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/whotyped/whotyped/internal/clues"
-	"github.com/whotyped/whotyped/internal/event"
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/score"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 // Scenarios are byte-identical copies of testdata/dataset/*; Go's embed

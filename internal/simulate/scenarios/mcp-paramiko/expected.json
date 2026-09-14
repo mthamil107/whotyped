@@ -1,8 +1,8 @@
 {
-  "score_min": 80,
-  "score_max": 95,
+  "score_min": 85,
+  "score_max": 100,
   "class": "suspected_agent",
-  "level": "alert",
+  "level": "high",
   "mode": "remote_agent",
-  "notes": "MCP SSH server (paramiko) with a pooled connection: DEBUG1 banner, 12 exec channels, no PTY, bash -c wrappers with output guards."
+  "notes": "MCP SSH server (paramiko) with a pooled connection: DEBUG1 banner, 12 exec channels paced 2-6 s apart like a model choosing each call, no PTY, output guards. The sshd-started login shell's -c is transport and does not count as a tool wrapper."
 }

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/whotyped/whotyped/internal/config"
+	"github.com/mthamil107/whotyped/internal/config"
 )
 
 // fixtureFS loads testdata/<name> into a MapFS so tests can add /proc and
@@ -426,5 +426,19 @@ func TestLogContentWarnsOnSilentAuthLog(t *testing.T) {
 	rep = Run(Options{Config: cfg, FS: fixtureFS(t, "ubuntu", files), Exec: fakeExec(true, true)})
 	if r := byName(rep)["sshlog.content"]; r.Status != StatusPass {
 		t.Fatalf("auth.log with sshd lines: %+v", r)
+	}
+}
+
+func TestVersionLineSkipsUsageNoise(t *testing.T) {
+	// OpenSSH 8.2 on Ubuntu 20.04: `sshd -V` is not an option.
+	out := "unknown option -- V\nOpenSSH_8.2p1 Ubuntu-4ubuntu0.3, OpenSSL 1.1.1f  31 Mar 2020\nusage: sshd [-46DdeiqTt] [-C connection_spec]\n"
+	if got := versionLine(out); !strings.HasPrefix(got, "OpenSSH_8.2p1") {
+		t.Fatalf("versionLine = %q", got)
+	}
+	if major, minor, ok := parseOpenSSHVersion(versionLine(out)); !ok || major != 8 || minor != 2 {
+		t.Fatalf("parse = %d.%d %v", major, minor, ok)
+	}
+	if got := versionLine("usage: something\n"); got != "" {
+		t.Fatalf("no version expected, got %q", got)
 	}
 }

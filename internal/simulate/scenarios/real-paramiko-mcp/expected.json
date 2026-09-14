@@ -1,0 +1,8 @@
+{
+  "score_min": 70,
+  "score_max": 90,
+  "class": "suspected_agent",
+  "level": "alert",
+  "mode": "remote_agent",
+  "notes": "Real session, anonymised: a paramiko 4.0 client shaped like an MCP SSH server, one transport with 14 exec channels 1.5 to 4 s apart, no PTY, recorded at LogLevel VERBOSE (no banner) with auditd (pilot, 2026-09-14)."
+}

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/alert"
 )
 
 // Options configures the sink. Credentials are looked up in the environment

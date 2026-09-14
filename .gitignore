@@ -11,7 +11,13 @@ coverage.*
 *.local.json
 *.local.yaml
 *.env
+.env*
 secrets*
+*.pem
+*.key
+*.ppk
+id_rsa*
+id_ed25519*
 !*.example
 
 # editor / os
@@ -22,3 +28,7 @@ Thumbs.db
 
 # lab artefacts
 /lab/recordings/
+
+# internal planning (kept locally)
+docs/launch/
+docs/interviews/

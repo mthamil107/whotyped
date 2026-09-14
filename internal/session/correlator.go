@@ -5,13 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/clean"
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/clean"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 // Options tunes the Correlator. Zero values take the documented defaults.
@@ -52,6 +53,9 @@ type Correlator struct {
 
 	failIPs   map[string]*list.Element // src ip -> element in failOrder (value *ipFails)
 	failOrder *list.List               // least recently used first
+
+	plumb      map[int]time.Time // pids of session plumbing processes, pruned by Expire
+	sessParent map[int]time.Time // sshd session process pids whose "sh -c" children are session shells
 }
 
 type ipFails struct {
@@ -105,6 +109,8 @@ func (c *Correlator) reset() {
 	c.uidUser = map[string]string{}
 	c.failIPs = map[string]*list.Element{}
 	c.failOrder = list.New()
+	c.plumb = map[int]time.Time{}
+	c.sessParent = map[int]time.Time{}
 }
 
 // Apply folds one event into the state and returns the affected track (nil if
@@ -232,6 +238,11 @@ func (c *Correlator) sessionStart(ev event.Event, ts time.Time) *Track {
 		// A forced command (authorized_keys command= or sshd ForceCommand)
 		// is still one exec channel; sshd logs the command it ran.
 		conn.ExecCount++
+		if ev.PID > 1 {
+			// The process that logs "Starting session" forks the session shell;
+			// remember it so auditd can tell that shell from an agent's wrapper.
+			c.sessParent[ev.PID] = ts
+		}
 		if tty {
 			// `ssh -tt host cmd`: a terminal on a one-command channel is not
 			// an interactive shell and must not cancel pty.none.
@@ -335,8 +346,18 @@ func (c *Correlator) disconnect(ev event.Event, ts time.Time) *Track {
 // ---- audit.* ---------------------------------------------------------------
 
 func (c *Correlator) auditLogin(ev event.Event, ts time.Time) *Track {
+	// A failed PAM login (password guessing, "(unknown user)") is not a
+	// session. Treating it as one would mint a track per brute-force attempt
+	// and, worse, make the attacker's address the account's most recent
+	// track, which unattributed processes and execves fall back to.
+	if res := ev.Field("res"); res != "" && res != "success" {
+		return nil
+	}
 	if ev.User == "" {
 		ev.User = ev.Field("acct")
+	}
+	if ev.User == "(unknown user)" || ev.User == "?" {
+		return nil
 	}
 	if ev.SrcIP == "" {
 		ev.SrcIP = ev.Field("addr")
@@ -370,6 +391,24 @@ func (c *Correlator) trackBySes(ev event.Event) *Track {
 }
 
 func (c *Correlator) auditExecve(ev event.Event, ts time.Time) *Track {
+	cmd := ev.Field("cmd")
+	ppid := atoi(ev.Field("ppid"))
+	// Session plumbing: what sshd, PAM and the login shell run around every
+	// session (Ubuntu's MOTD scripts, the sshrc hook, systemd --user). It is
+	// the same for humans and agents, so counting it would inflate every
+	// session's command count and style clues. A plumbing root is recognised
+	// by its command line; everything it spawns is recognised by ancestry.
+	if _, child := c.plumb[ppid]; child || isPlumbingRoot(cmd) {
+		if ev.PID != 0 {
+			c.plumb[ev.PID] = ts
+		}
+		if isSSHRC(cmd) && ppid > 1 {
+			// sshd forks the sshrc runner and the session shell from the same
+			// session process: remember it to recognise the shell below.
+			c.sessParent[ppid] = ts
+		}
+		return nil
+	}
 	t := c.trackBySes(ev)
 	if t == nil {
 		t = c.userLast[c.userOf(ev)]
@@ -377,8 +416,61 @@ func (c *Correlator) auditExecve(ev event.Event, ts time.Time) *Track {
 	if t == nil {
 		return nil // not an SSH session we know about (cron, console, ...)
 	}
-	c.addExec(t, ExecSample{TS: ts, Argv0: clean.Text(ev.Field("argv0"), clean.MaxName), Cmd: ev.Field("cmd"), Ses: sesOf(ev), PID: ev.PID, Origin: "auditd"})
+	sample := ExecSample{TS: ts, Argv0: clean.Text(ev.Field("argv0"), clean.MaxName), Cmd: cmd, Ses: sesOf(ev), PID: ev.PID, Origin: "auditd"}
+	if _, ok := c.sessParent[ppid]; ok {
+		// The login shell sshd started to run the client's command
+		// ("bash -c <command>"). Its "-c" is transport, not an agent's tool
+		// wrapper: keep only the command the client sent.
+		if inner, ok := sessionShellCommand(cmd); ok {
+			sample.Cmd = inner
+			sample.Origin = "auditd-session"
+		}
+	}
+	c.addExec(t, sample)
 	return t
+}
+
+// plumbingRoots match the command lines that start session plumbing. They are
+// anchored and specific: a user who types one of these by hand loses nothing
+// but that one command's style evidence.
+var plumbingRoots = []*regexp.Regexp{
+	regexp.MustCompile(`^(?:/bin/)?sh -c /bin/sh (?:/etc/ssh/sshrc|\.ssh/rc)$`),
+	regexp.MustCompile(`^/bin/sh (?:/etc/ssh/sshrc|\.ssh/rc)$`),
+	regexp.MustCompile(`run-parts --lsbsysinit /etc/update-motd\.d`),
+	regexp.MustCompile(`^(?:/usr)?/lib/systemd/systemd --user`),
+	regexp.MustCompile(`^(?:/usr)?/lib/systemd/user-environment-generators/`),
+	regexp.MustCompile(`^(?:/usr)?/bin/systemctl --user (?:set-environment|import-environment|unset-environment)`),
+	regexp.MustCompile(`^(?:/usr/lib/update-notifier/update-motd-|/usr/bin/landscape-sysinfo)`),
+	// The sshrc hook's own pipeline runs in a command substitution, whose
+	// subshell is never exec'd, so ancestry cannot see it.
+	regexp.MustCompile(`^logger -p authpriv\.info -t whotyped-declare `),
+	regexp.MustCompile(`^tr -cd A-Za-z0-9\._@:\+-$`),
+	regexp.MustCompile(`^xauth -q -$`),
+}
+
+func isPlumbingRoot(cmd string) bool {
+	for _, re := range plumbingRoots {
+		if re.MatchString(cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSSHRC(cmd string) bool {
+	return plumbingRoots[0].MatchString(cmd) || plumbingRoots[1].MatchString(cmd)
+}
+
+// reSessionShell matches how sshd runs a client's command: the user's login
+// shell with -c and the command as one argument.
+var reSessionShell = regexp.MustCompile(`^(?:\S*/)?-?(?:ba|z|da|k|fi)?sh -c (.+)$`)
+
+func sessionShellCommand(cmd string) (string, bool) {
+	m := reSessionShell.FindStringSubmatch(cmd)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
 }
 
 // ---- proc.* / net.* ----------------------------------------------------------
@@ -787,6 +879,18 @@ func (c *Correlator) drop(t *Track) {
 // Expire removes and returns tracks idle for longer than Window, and trims
 // samples older than the window (procs older than ProcTTL) from live tracks.
 func (c *Correlator) Expire(now time.Time) []*Track {
+	// Plumbing and session-shell parent pids only matter for the seconds around
+	// a session start; forget them after two minutes so the maps stay small.
+	for pid, seen := range c.plumb {
+		if now.Sub(seen) > 2*time.Minute {
+			delete(c.plumb, pid)
+		}
+	}
+	for pid, seen := range c.sessParent {
+		if now.Sub(seen) > c.opts.Window {
+			delete(c.sessParent, pid)
+		}
+	}
 	var gone []*Track
 	for _, t := range c.tracks {
 		if now.Sub(t.LastSeen) > c.opts.Window {

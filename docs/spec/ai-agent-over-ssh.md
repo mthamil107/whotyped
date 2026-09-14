@@ -185,7 +185,7 @@ Title: `Declare AI agent sessions to the SSH server via AI_AGENT env`
 
 Body:
 
-> This change makes every SSH session opened by this server request the environment variable `AI_AGENT=<name>@<version>` (and `AI_AGENT_SESSION` where a session id is known). It follows the draft "AI_AGENT over SSH" convention: https://github.com/whotyped/whotyped/blob/main/docs/spec/ai-agent-over-ssh.md
+> This change makes every SSH session opened by this server request the environment variable `AI_AGENT=<name>@<version>` (and `AI_AGENT_SESSION` where a session id is known). It follows the draft "AI_AGENT over SSH" convention: https://github.com/mthamil107/whotyped/blob/main/docs/spec/ai-agent-over-ssh.md
 >
 > Why: operators of Linux servers increasingly need to tell agent-driven sessions from human ones for audit reasons (PCI DSS 8.2.2, ISO 27001 A.8.16). Today an MCP SSH server looks like an anonymous library client. Declaring the agent is cheap and honest.
 >

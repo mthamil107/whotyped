@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/clues"
-	"github.com/whotyped/whotyped/internal/score"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 // ErrTransient marks a delivery failure worth retrying (5xx, timeouts,

@@ -11,8 +11,8 @@ description: |
   Terraform, Teleport and monitoring tools; treat a hit as automation and require a second
   signal before calling it an agent.
 references:
-  - https://github.com/whotyped/whotyped/blob/main/docs/research/02-agent-fingerprints.md
-  - https://github.com/whotyped/whotyped/blob/main/docs/install/sshd-and-auditd.md
+  - https://github.com/mthamil107/whotyped/blob/main/docs/research/02-agent-fingerprints.md
+  - https://github.com/mthamil107/whotyped/blob/main/docs/install/sshd-and-auditd.md
 author: whotyped project
 date: 2026-09-11
 tags:

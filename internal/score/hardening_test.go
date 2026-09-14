@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
-	"github.com/whotyped/whotyped/internal/readers/auditd"
-	"github.com/whotyped/whotyped/internal/readers/sshlog"
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/readers/auditd"
+	"github.com/mthamil107/whotyped/internal/readers/sshlog"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 // shippedPack is the embedded rule pack with every profile enabled, i.e. the

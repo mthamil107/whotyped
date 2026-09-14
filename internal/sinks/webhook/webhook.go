@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/alert"
-	"github.com/whotyped/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/score"
 )
 
 // ErrTransient is alert.ErrTransient; 5xx, 429 and network failures wrap it

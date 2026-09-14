@@ -1,0 +1,7 @@
+{
+  "score_min": 45,
+  "score_max": 75,
+  "class": "declared_agent",
+  "mode": "remote_agent",
+  "notes": "Real session, anonymised: Claude Code declaring itself with SetEnv AI_AGENT=claude-code on every connection while reviewing log and time settings, 13 commands. The declaration arrives through the sshrc hook's whotyped-declare line (pilot, 2026-09-14)."
+}

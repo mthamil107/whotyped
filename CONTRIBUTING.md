@@ -16,7 +16,7 @@ Thanks for helping. The most useful contributions, in order: false-positive repo
 Linux or macOS:
 
 ```sh
-git clone https://github.com/whotyped/whotyped
+git clone https://github.com/mthamil107/whotyped
 cd whotyped
 go build ./...
 go test ./...
@@ -82,17 +82,11 @@ Log lines from OpenSSH versions, distros or PAM configurations we do not have ar
 - Fill in the PR template. Say how you tested it and on what.
 - CI must be green: build, tests, vet, gofmt, cross-compile, `sigma check` for Sigma changes, `helm lint` for chart changes.
 - Review SLA: first response within 5 working days; rule-pack PRs usually faster. If you hear nothing after 7 days, comment on the PR to nudge.
-- Two maintainer approvals for changes to frozen contracts and scoring weights; one for everything else (see `GOVERNANCE.md`).
+- Two maintainer approvals for changes to core contract types and scoring weights once the project has two maintainers; one for everything else (see `GOVERNANCE.md`).
 
-## DCO sign-off
+## Licensing of contributions
 
-We use the Developer Certificate of Origin (https://developercertificate.org). Every commit needs a `Signed-off-by:` line with your real name and email:
-
-```sh
-git commit -s -m "rules: add example-agent fingerprint"
-```
-
-By signing off you certify that you wrote the change or have the right to submit it under Apache-2.0. No CLA.
+By submitting a pull request you agree to license your contribution under Apache-2.0. No CLA, and no sign-off line is needed.
 
 ## Style
 

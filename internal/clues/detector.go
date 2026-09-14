@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 // Detector turns one aspect of a Track into zero or more Clues. Detectors are

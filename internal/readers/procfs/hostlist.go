@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/rules"
 )
 
 // HostList is the runtime Resolver: it resolves every hostname in the

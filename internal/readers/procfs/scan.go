@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/whotyped/whotyped/internal/clean"
-	"github.com/whotyped/whotyped/internal/event"
-	"github.com/whotyped/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/clean"
+	"github.com/mthamil107/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/rules"
 )
 
 // Defaults for Scanner zero values.

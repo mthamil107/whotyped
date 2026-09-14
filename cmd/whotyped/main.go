@@ -19,13 +19,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/app"
-	"github.com/whotyped/whotyped/internal/check"
-	"github.com/whotyped/whotyped/internal/config"
-	"github.com/whotyped/whotyped/internal/report"
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/simulate"
-	"github.com/whotyped/whotyped/internal/version"
+	"github.com/mthamil107/whotyped/internal/app"
+	"github.com/mthamil107/whotyped/internal/check"
+	"github.com/mthamil107/whotyped/internal/config"
+	"github.com/mthamil107/whotyped/internal/report"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/simulate"
+	"github.com/mthamil107/whotyped/internal/version"
 )
 
 const usageText = `whotyped - know when an AI agent, not a human, is on your server

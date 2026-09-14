@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 func TestStyleBuiltins(t *testing.T) {

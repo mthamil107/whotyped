@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
-	"github.com/whotyped/whotyped/internal/readers"
+	"github.com/mthamil107/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/readers"
 )
 
 // execEvent renders one complete execve group (3 records) for serial n.

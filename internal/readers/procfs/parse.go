@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/whotyped/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/rules"
 )
 
 // unsetID is what the kernel reports in loginuid/sessionid when audit never

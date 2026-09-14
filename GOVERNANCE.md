@@ -4,7 +4,7 @@ whotyped is an Apache-2.0 project. This document says who decides what, and how.
 
 ## Roles
 
-**Maintainers** have merge rights on the whole repository and make releases. There must be at least two maintainers at all times; if the count drops to one, recruiting a second is the project's top priority and no major release ships until it is done. Maintainers are listed below.
+**Maintainers** have merge rights on the whole repository and make releases. The aim is at least two maintainers, and recruiting a second is a priority. Until a second maintainer joins, the lead maintainer may merge and release alone; each such decision is recorded in the decision log. Maintainers are listed below.
 
 **Rule-pack reviewers** have merge rights limited to `rules/`, `deploy/sigma/`, `deploy/wazuh/`, `deploy/falco/` and their fixtures. They review agent fingerprints, allowlist profiles and SIEM rules. Becoming one: three merged rule-pack PRs of good quality and a nomination by a maintainer.
 
@@ -14,8 +14,7 @@ Current maintainers:
 
 | Name | GitHub | Since | Areas |
 |---|---|---|---|
-| Thamil | [handle] | 2026-09 | lead, architecture, releases |
-| [second maintainer, to be appointed before v0.1.0] | | | |
+| Thamil | [@mthamil107](https://github.com/mthamil107) | 2026-09 | lead, architecture, releases |
 
 Current rule-pack reviewers: none yet.
 
@@ -35,6 +34,8 @@ Current rule-pack reviewers: none yet.
 
 **One approval** (maintainer or, within their area, rule-pack reviewer) for everything else. Authors do not approve their own PRs.
 
+The two-approval and no-self-approval rules apply once there are two maintainers. Until then the interim rule under Roles applies: the lead maintainer may merge and release alone, and each such decision is recorded in the decision log.
+
 **Disagreement** between maintainers: talk first, in the issue. If it is not resolved in a week, the lead maintainer decides and records the decision and the dissent in the decision log. If the disagreement is about the lead's own change, the other maintainers decide by simple majority.
 
 **Removing a maintainer** requires agreement of all other maintainers, for sustained inactivity (6 months without review or commit activity, after a check-in) or a code-of-conduct violation. Inactive maintainers become emeritus and are welcome back.
@@ -51,7 +52,7 @@ Semantic versioning. Before 1.0, minor versions may break config and schema with
 
 ## Security
 
-See `SECURITY.md`. Security fixes may be merged by a single maintainer without the 72-hour wait, with the second review happening after the fact.
+See `SECURITY.md`. Security fixes may be merged by a single maintainer without the 72-hour wait, with the second review happening after the fact once there is a second maintainer.
 
 ## Decision log
 

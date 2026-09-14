@@ -3,7 +3,7 @@ package procfs
 import (
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/rules"
 )
 
 // Options tunes the live reader. Zero values pick the defaults below.

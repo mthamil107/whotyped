@@ -2,9 +2,9 @@
 
 **Know when an AI agent, not a human, is working on your Linux servers over SSH.**
 
-[![CI](https://github.com/whotyped/whotyped/actions/workflows/ci.yml/badge.svg)](https://github.com/whotyped/whotyped/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/whotyped/whotyped)](https://goreportcard.com/report/github.com/whotyped/whotyped)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/whotyped/whotyped/badge)](https://scorecard.dev/viewer/?uri=github.com/whotyped/whotyped)
+[![CI](https://github.com/mthamil107/whotyped/actions/workflows/ci.yml/badge.svg)](https://github.com/mthamil107/whotyped/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mthamil107/whotyped)](https://goreportcard.com/report/github.com/mthamil107/whotyped)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mthamil107/whotyped/badge)](https://scorecard.dev/viewer/?uri=github.com/mthamil107/whotyped)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 whotyped is a small Go daemon that reads what the server already has (the sshd
@@ -16,9 +16,8 @@ carries the evidence.
 ## 60-second demo
 
 ```sh
-# 1. install (deb/rpm from GitHub Releases; amd64 and arm64)
-curl -fsSLO https://github.com/whotyped/whotyped/releases/latest/download/whotyped_0.1.0_linux_amd64.deb
-sudo dpkg -i whotyped_0.1.0_linux_amd64.deb        # or: sudo rpm -i whotyped_0.1.0_linux_amd64.rpm
+# 1. build from source (Go 1.26); deb/rpm packages will be attached to GitHub Releases from v0.1.0
+git clone https://github.com/mthamil107/whotyped && cd whotyped && go build -o whotyped ./cmd/whotyped && sudo install -m 0755 whotyped /usr/bin/whotyped
 
 # 2. let sshd log sessions and accept AI_AGENT; add the auditd execve rule
 sudo whotyped check --fix && sudo systemctl reload ssh && sudo augenrules --load
@@ -30,7 +29,10 @@ sudo systemctl enable --now whotyped
 whotyped simulate
 ```
 
-![demo](docs/assets/demo.gif)
+A source build does not install the systemd unit or config; step 1 of
+[`docs/install/quickstart.md`](docs/install/quickstart.md) shows the extra commands.
+
+A demo recording will be added with the first release.
 
 No Linux box at hand? The same pipeline runs on anything:
 
@@ -84,8 +86,9 @@ in the same place. auditd and `/proc` are joined through the audit session id.
 
 Worked examples from the labelled dataset: interactive admin 0; Ansible 0-5
 with its profile; Claude Code's Bash tool sshing per command 75; a paramiko MCP
-server 88 (70 without auditd); `claude --dangerously-skip-permissions` on the
-box 100.
+server with a DEBUG1 banner 95; `claude --dangerously-skip-permissions` on the
+box 100. Real sessions from a pilot server, anonymised in `testdata/dataset/real-*`:
+Claude Code over SSH 73, a paramiko client 80.
 
 ### Example alert
 
@@ -122,7 +125,7 @@ inside a configured change-freeze window).
 - sshd `LogLevel VERBOSE` and `AcceptEnv AI_AGENT`. `whotyped check --fix` writes `/etc/ssh/sshd_config.d/90-whotyped.conf`; reload, do not restart.
 - The `/etc/ssh/sshrc` declaration hook ([`deploy/sshd/sshrc`](deploy/sshd/sshrc)). `check --fix` installs it when the host has no sshrc and never edits an existing one. sshd logs accepted variables only at DEBUG2, so without the hook declarations are seen only for long-running sessions.
 - auditd with an execve rule: optional but recommended, it is what gives command text for remote sessions. `check --fix` writes `/etc/audit/rules.d/90-whotyped.rules`.
-- root, or `CAP_DAC_READ_SEARCH` (logs), `CAP_SYS_PTRACE` (other users' `/proc/PID/environ`, where `AI_AGENT` lives) and `CAP_SYSLOG`. The systemd unit grants exactly these and sandboxes the rest.
+- root. The service runs as root, with its capability bounding set limited to `CAP_DAC_READ_SEARCH` (logs), `CAP_SYS_PTRACE` (other users' `/proc/PID/environ`, where `AI_AGENT` lives) and `CAP_SYSLOG`, plus systemd sandboxing. A non-root mode is future work.
 
 `whotyped check` prints, per clue family, whether it can fire on this host and
 what to change.
@@ -136,9 +139,10 @@ what to change.
 
 ## Honest limits
 
-- **Evasion is easy for an attacker who knows the scoring**: allocate a PTY, wait a few seconds between commands, avoid heredocs, spoof an OpenSSH banner. whotyped catches the common case, the default behaviour of today's tools, not a determined adversary. The spoof-resistant path is declaration, enforced by policy on the key.
-- The client banner is only logged at `LogLevel DEBUG1`; without it a paramiko server scores about 70 instead of 88.
+- **Evasion is easy for an attacker who knows the scoring**: allocate a PTY, pace commands minutes apart or work inside one interactive shell, avoid heredocs, spoof an OpenSSH banner. whotyped catches the common case, the default behaviour of today's tools, not a determined adversary. The spoof-resistant path is declaration, enforced by policy on the key.
+- The client banner is only logged at `LogLevel DEBUG1`; without it a paramiko client loses 35 points; on the pilot it still reached `alert` (75 to 80) through pacing and command style, with auditd on.
 - Without auditd, a remote agent driving the host over SSH tops out around 55 (`info`): sshd logs give rhythm and PTY clues but no command text. The end-to-end lab measured exactly that; see [`lab/e2e/README.md`](lab/e2e/README.md).
+- Real agents are slower than scripts. On a real Ubuntu 20.04 pilot server with auditd, the first real Claude Code and paramiko sessions scored 53 to 65 (`info`). Two fixes from that data (ignoring per-session plumbing, and a `rhythm.think_time` clue for model-paced commands) brought live sessions to 73 to 80 (`alert`). The think-time clue is tuned on three real sessions and is provisional until pilots add human baseline data; see [`docs/research/06-pilot-2026-09-14.md`](docs/research/06-pilot-2026-09-14.md).
 - No keystroke timing yet. That needs tlog or eBPF and is Phase 2.
 - SSH only. `kubectl exec`, SSM sessions and serial consoles are later phases.
 - Linux hosts only. Parsers and replay run on any OS, the readers do not. No Windows target.

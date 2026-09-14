@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/alert"
-	"github.com/whotyped/whotyped/internal/clues"
-	"github.com/whotyped/whotyped/internal/score"
+	"github.com/mthamil107/whotyped/internal/alert"
+	"github.com/mthamil107/whotyped/internal/clues"
+	"github.com/mthamil107/whotyped/internal/score"
 )
 
 var base = time.Date(2026, 9, 7, 9, 0, 0, 0, time.UTC)

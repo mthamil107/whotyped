@@ -3,8 +3,8 @@ package score
 import (
 	"time"
 
-	"github.com/whotyped/whotyped/internal/rules"
-	"github.com/whotyped/whotyped/internal/session"
+	"github.com/mthamil107/whotyped/internal/rules"
+	"github.com/mthamil107/whotyped/internal/session"
 )
 
 var t0 = time.Date(2026, 9, 11, 13, 50, 0, 0, time.UTC)

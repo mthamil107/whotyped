@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/whotyped/whotyped/internal/event"
+	"github.com/mthamil107/whotyped/internal/event"
 )
 
 // lineBuffer splits a byte stream into lines, holding a partial last line
