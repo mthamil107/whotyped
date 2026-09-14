@@ -35,7 +35,7 @@ See `roles/whotyped/defaults/main.yml`. The important ones:
 | `whotyped_install_method` | `package` | `package` downloads deb/rpm from GitHub releases; `binary` copies `whotyped_binary_src` from the controller |
 | `whotyped_release_base_url` | GitHub releases URL | override for an internal mirror |
 | `whotyped_binary_src` | `files/whotyped` | path on the controller when `binary` |
-| `whotyped_manage_sshd` | `true` | writes `/etc/ssh/sshd_config.d/50-whotyped.conf` and reloads sshd |
+| `whotyped_manage_sshd` | `true` | writes `/etc/ssh/sshd_config.d/90-whotyped.conf` and reloads sshd |
 | `whotyped_sshd_loglevel` | `VERBOSE` | `DEBUG1` only where you accept the log volume |
 | `whotyped_manage_auditd` | `true` | installs auditd if missing, writes `/etc/audit/rules.d/90-whotyped.rules`, runs `augenrules --load` |
 | `whotyped_privacy_command_text` | `redacted` | `redacted`, `full`, `none` |
@@ -52,7 +52,8 @@ The config template is deliberately minimal. If you need options it does not exp
 - `/usr/bin/whotyped` (package) or `/usr/local/bin/whotyped` (binary)
 - `/etc/whotyped/config.yaml` (0640 root:root)
 - `/etc/systemd/system/whotyped.service` (binary method only; the package ships its own)
-- `/etc/ssh/sshd_config.d/50-whotyped.conf`
+- `/etc/ssh/sshd_config.d/90-whotyped.conf`
+- `/etc/ssh/sshrc`, only when the host has none (logs `AI_AGENT` declarations; an existing sshrc is left alone and a warning is printed)
 - `/etc/audit/rules.d/90-whotyped.rules` (same content and path as `whotyped check --fix`)
 - `/var/lib/whotyped/` (state and alerts)
 
@@ -65,7 +66,7 @@ There is no uninstall task in the role. Reverse it with:
 ```sh
 systemctl disable --now whotyped
 apt remove whotyped || rpm -e whotyped
-rm -f /etc/ssh/sshd_config.d/50-whotyped.conf /etc/audit/rules.d/90-whotyped.rules
+rm -f /etc/ssh/sshd_config.d/90-whotyped.conf /etc/audit/rules.d/90-whotyped.rules
 systemctl reload ssh || systemctl reload sshd
 augenrules --load
 ```

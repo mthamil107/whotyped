@@ -18,7 +18,7 @@ Pure Go, `CGO_ENABLED=0`. Linux readers behind build tags; parsers are portable 
 11. **State.** `/var/lib/whotyped/state.json` (atomic write every 30 s): open tracks, journal cursor, audit offset, dedupe keys. Alerts to `alerts.jsonl` (rotated). No database.
 12. **Missing pieces added.** Alert dedupe and re-alert policy; timestamp normalisation; log-line injection defence (never re-parse text found inside another record); count `Connection closed by authenticating user` bursts; labelled dataset in `testdata/dataset/` as the scorer's definition of done.
 
-Two caveats verified during research (see `docs/research/03-ssh-auditd-proc.md`): sshd logs the client software version only at `LogLevel DEBUG1`, and it does not log accepted `SetEnv` variables. So in v0.1 the banner clue is available only with DEBUG1 (or a passive sniff later), and the declared-agent signal comes from the procfs reader finding `AI_AGENT` in the session shell's environment, plus a PAM-free `ForceCommand`-less path documented in the spec.
+Two caveats verified during research (see `docs/research/03-ssh-auditd-proc.md`): sshd logs the client software version only at `LogLevel DEBUG1`, and it does not log accepted `SetEnv` variables. So in v0.1 the banner clue is available only with DEBUG1 (or a passive sniff later). The declared-agent signal comes from an `/etc/ssh/sshrc` hook that logs `AI_AGENT` with the session's address and port for every session (tag `whotyped-declare`), with the procfs reader reading the session shell's environment as a fallback for long sessions. The end-to-end lab (2026-09-14) showed the procfs path alone misses one-command-per-step agents entirely, which is why the hook was added.
 
 ## 2. Layout
 

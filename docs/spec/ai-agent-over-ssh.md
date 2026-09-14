@@ -44,6 +44,20 @@ AcceptEnv AI_AGENT AI_AGENT_*
 
 Without `AcceptEnv`, OpenSSH silently discards the request (the default is to accept nothing; the discard is logged only at DEBUG2 as `Ignoring env request AI_AGENT: disallowed name`). Accepting these names is safe: they carry no meaning to the shell or to any known program.
 
+An accepted variable is not logged either (only at DEBUG2, as `Setting env`). A server that wants a record of every declaration SHOULD log it from `/etc/ssh/sshrc`, which sshd runs for each session with the client's environment already set and before the session's command starts:
+
+```sh
+# /etc/ssh/sshrc (full file, with the xauth block sshd(8) requires: deploy/sshd/sshrc)
+if [ -n "${AI_AGENT:-}" ] && command -v logger >/dev/null 2>&1; then
+	whotyped_agent=$(printf '%s' "$AI_AGENT" | LC_ALL=C tr -cd 'A-Za-z0-9._@:+-' | cut -c1-64)
+	set -- ${SSH_CONNECTION:-}
+	[ -n "$whotyped_agent" ] && [ -n "${1:-}" ] && logger -p authpriv.info -t whotyped-declare -- \
+		"AI_AGENT=$whotyped_agent user=${USER:-$(id -un)} from=$1 port=$2" 2>/dev/null || :
+fi
+```
+
+This matters for the common agent shape: one short `ssh host cmd` per step. Those commands finish long before any periodic scan could read the session environment. The line is a claim a local user could also write with `logger(1)`, so a consumer must only attach it to an SSH connection that already exists for the same user, address and port, and should check journald's trusted `_UID` where available. sshd skips `/etc/ssh/sshrc` for a user who has `~/.ssh/rc`.
+
 ### 2.3 Spoof-resistant variants
 
 A client can claim anything. Two OpenSSH features let the server impose the value instead. Both rely on the environment precedence in OpenSSH's `do_setup_env()`: client variables are applied first, then `authorized_keys` `environment=` options, then `sshd_config` `SetEnv`, and later assignments win (see `docs/research/03-ssh-auditd-proc.md` §2).
@@ -70,7 +84,7 @@ environment="AI_AGENT=claude-code",environment="AI_AGENT_OPERATOR=alice" ssh-ed2
 ## 3. How consumers read it
 
 - **Any process in the session.** The variable is in the environment of the session shell and everything it spawns. `/proc/<pid>/environ` (same uid or `CAP_SYS_PTRACE`) shows it. It is not visible to PAM session hooks: `pam_open_session` runs before the channel `env` request is processed (research doc 03 §2).
-- **whotyped.** The procfs reader reads the environ of each SSH session shell, joins it to the sshd connection by `/proc/<pid>/sessionid`, and emits `class=declared_agent`, `agent=<name>` at level `info`. A declaration is a label, not a pass: if the session's behaviour alone reaches the alert or high threshold, the usual `agent_detected` / `agent_high` events follow with the class kept, and inside a freeze window any declared activity is a violation. The declaration is only accepted from the session itself (accepted `SetEnv`, or a process attributed to the session by audit session id or parent sshd pid), so a stray `AI_AGENT=x` process left in the background cannot relabel the account's next session.
+- **whotyped.** The sshd log reader picks up the `whotyped-declare` line from the sshrc hook (section 2.2) and joins it to the connection by user, source address and port. As a fallback for long sessions, the procfs reader reads the environ of each SSH session shell and joins it by `/proc/<pid>/sessionid` or parent sshd pid. Either way it emits `class=declared_agent`, `agent=<name>` at level `info`. A declaration is a label, not a pass: if the session's behaviour alone reaches the alert or high threshold, the usual `agent_detected` / `agent_high` events follow with the class kept, and inside a freeze window any declared activity is a violation. The declaration is only accepted from the session itself (accepted `SetEnv`, or a process attributed to the session by audit session id or parent sshd pid), so a stray `AI_AGENT=x` process left in the background cannot relabel the account's next session.
 - **Shell prompts and MOTD.** `[ -n "$AI_AGENT" ] && PS1="(agent:$AI_AGENT) $PS1"` in `/etc/profile.d/`. Cheap and visible in session recordings.
 - **sudo.** `env_reset` strips it. Add `Defaults env_keep += "AI_AGENT AI_AGENT_SESSION AI_AGENT_OPERATOR"` so it survives into privileged commands.
 - **Session recorders.** tlog and `script` do not record the environment; capture it once at shell start, e.g. `/etc/profile.d/ai-agent-log.sh` running `logger -t ai_agent "user=$USER agent=${AI_AGENT:-none} session=${AI_AGENT_SESSION:-} operator=${AI_AGENT_OPERATOR:-}"`.

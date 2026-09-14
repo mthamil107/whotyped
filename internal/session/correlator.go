@@ -259,7 +259,25 @@ func (c *Correlator) banner(ev event.Event, ts time.Time) *Track {
 }
 
 func (c *Correlator) sshEnv(ev event.Event, ts time.Time) *Track {
-	ref := c.ensureConn(ev, ts)
+	var ref *connRef
+	if ev.Field("via") == "sshrc" {
+		// The sshrc hook runs inside an authenticated session, so its
+		// connection already exists: never mint a provisional one from a line
+		// any local user can write with logger(1). When journald supplies the
+		// trusted sender uid and we know whose uid it is, it must be the
+		// connection's user.
+		ref = c.findConn(ev)
+		if ref == nil || ref.conn.User != ev.User {
+			return nil
+		}
+		if uid := ev.Field("uid"); uid != "" {
+			if owner, known := c.uidUser[uid]; known && owner != ev.User {
+				return nil
+			}
+		}
+	} else {
+		ref = c.ensureConn(ev, ts)
+	}
 	if ref == nil {
 		return nil
 	}
@@ -720,7 +738,7 @@ func (c *Correlator) touch(t *Track, ts time.Time) {
 // connections is remote_agent; otherwise unknown.
 func modeOf(t *Track) string {
 	for _, p := range t.Procs {
-		if p.Agent != "" || len(p.Env) > 0 || len(p.Flags) > 0 {
+		if p.Agent != "" || len(p.Flags) > 0 || hasAgentEnv(p) {
 			return "local_agent"
 		}
 	}
@@ -943,4 +961,18 @@ func shortHash(n int, parts ...string) string {
 func (t *Track) String() string {
 	return fmt.Sprintf("%s %s@%s fp=%s conns=%d execs=%d procs=%d net=%d mode=%s",
 		t.ID, t.Key.User, t.Key.SrcIP, t.Key.Fingerprint, len(t.Connections), len(t.Execs), len(t.Procs), len(t.NetConns), t.Mode)
+}
+
+// hasAgentEnv reports whether a process carries agent environment evidence.
+// Rule-listed markers such as CLAUDECODE count wherever the process was
+// placed. AI_AGENT alone counts only for an attributed process: a background
+// process that merely exports AI_AGENT (possibly to spoof "human") must not
+// turn a user's SSH track into a local-agent track.
+func hasAgentEnv(p ProcSample) bool {
+	for k := range p.Env {
+		if k != "AI_AGENT" {
+			return true
+		}
+	}
+	return p.Attributed && p.Env["AI_AGENT"] != ""
 }

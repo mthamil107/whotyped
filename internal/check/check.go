@@ -7,6 +7,7 @@ package check
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -92,8 +93,10 @@ type facts struct {
 	cfg *config.Config
 
 	sshd        *SSHDSettings
+	sshrc       tri // /etc/ssh/sshrc carries the whotyped-declare hook
 	journal     tri
 	authLog     tri
+	sshdLines   tri // the auth log file actually contains sshd lines
 	auditdUnit  tri
 	auditLog    tri
 	auditRule64 tri
@@ -306,6 +309,7 @@ func (r *runner) checkSSHD() {
 		r.warn("sshd.acceptenv", "AcceptEnv does not accept AI_AGENT: declared agents cannot identify themselves; everything relies on inference",
 			"add `AcceptEnv AI_AGENT` (whotyped check --fix installs "+SSHDDropInPath+") and reload sshd")
 	}
+	r.checkSSHRC()
 	if strings.EqualFold(s.PermitUserEnvironment, "yes") {
 		r.warn("sshd.permituserenvironment", "PermitUserEnvironment yes: a client can set arbitrary variables, so AI_AGENT (and its absence) is client-controlled",
 			"expected for declared agents anyway; note that identity clues are self-reported")
@@ -313,6 +317,28 @@ func (r *runner) checkSSHD() {
 	if len(s.Includes) == 0 && r.opts.FS != nil {
 		r.warn("sshd.include", "sshd_config has no Include line; the drop-in "+SSHDDropInPath+" would be ignored",
 			"add `Include /etc/ssh/sshd_config.d/*.conf` at the top of /etc/ssh/sshd_config, or set the two keywords there directly")
+	}
+}
+
+// checkSSHRC looks for the declaration hook. Without it a SetEnv AI_AGENT
+// declaration is visible only while some process of the session is alive
+// during a /proc scan, which one-command-per-step agents never are.
+func (r *runner) checkSSHRC() {
+	b, err := fs.ReadFile(r.opts.FS, strings.TrimPrefix(SSHRCPath, "/"))
+	switch {
+	case err == nil && strings.Contains(string(b), SSHRCMarker):
+		r.f.sshrc = yes
+		r.pass("sshd.sshrc", SSHRCPath+" logs AI_AGENT declarations (whotyped-declare), including for one-command sessions")
+	case err == nil:
+		r.f.sshrc = no
+		r.warn("sshd.sshrc", SSHRCPath+" exists but has no whotyped-declare hook: declarations from one-command-per-step agents are missed",
+			"copy the AI_AGENT block from /usr/share/whotyped/sshd/sshrc into "+SSHRCPath+" (check --fix never edits an existing sshrc)")
+	case errors.Is(err, fs.ErrNotExist):
+		r.f.sshrc = no
+		r.warn("sshd.sshrc", "no "+SSHRCPath+": AI_AGENT declarations are seen only while a session process is alive during a /proc scan, so one-command-per-step agents are missed",
+			"whotyped check --fix installs "+SSHRCPath)
+	default:
+		r.warn("sshd.sshrc", SSHRCPath+": "+err.Error(), "run as root")
 	}
 }
 
@@ -426,6 +452,10 @@ func (r *runner) checkSSHLogSource() {
 			if readable(r.opts.FS, c) {
 				r.f.authLog = yes
 				r.pass("sshlog.file", "/"+c+" is readable")
+				usingFile := r.f.journal != yes || (cfg != nil && cfg.Readers.SSHLog.Source == "file")
+				if usingFile {
+					r.checkLogContent(c)
+				}
 				break
 			}
 		}
@@ -444,6 +474,38 @@ func (r *runner) checkSSHLogSource() {
 	default:
 		r.fail("sshlog", "no sshd log source: journalctl missing and no readable /var/log/auth.log or /var/log/secure", "install rsyslog or run whotyped as root / in the adm group")
 	}
+}
+
+// checkLogContent reads the tail of the auth log whotyped will follow and
+// warns when it holds no sshd lines. A readable but silent file is the
+// failure a permission or syslog-routing mistake produces (for example
+// rsyslog dropping privileges and being unable to write a root-owned file),
+// and it looks exactly like "no SSH activity" from inside the daemon.
+func (r *runner) checkLogContent(name string) {
+	const tail = 256 << 10
+	f, err := r.opts.FS.Open(name)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	buf := make([]byte, tail)
+	if st, err := f.Stat(); err == nil && st.Size() > tail {
+		if s, ok := f.(io.Seeker); ok {
+			_, _ = s.Seek(st.Size()-tail, io.SeekStart)
+		}
+	}
+	n, _ := io.ReadFull(f, buf)
+	text := string(buf[:n])
+	for _, id := range []string{" sshd[", " sshd-session[", " sshd-auth[", " sshd: "} {
+		if strings.Contains(text, id) {
+			r.f.sshdLines = yes
+			r.pass("sshlog.content", "/"+name+" contains sshd lines")
+			return
+		}
+	}
+	r.f.sshdLines = no
+	r.warn("sshlog.content", "/"+name+" has no sshd lines in its last 256 KiB: either nobody has logged in yet, or syslog is not writing sshd's authpriv messages there",
+		"log in once over SSH and re-run check; if still empty, check the syslog rule for auth,authpriv and that the file is writable by the syslog daemon's user")
 }
 
 func (r *runner) checkAuditd() {
@@ -628,11 +690,15 @@ func (r *runner) coverage() map[string]bool {
 	cov["banner"] = debug1
 	cov["rhythm"] = verbose
 	cov["pty"] = verbose
-	cov["style"] = auditLive || procLive
+	// Style needs the text of short remote commands, which only auditd
+	// records; /proc sees a command only if it outlives a scan interval.
+	cov["style"] = auditLive
 	cov["flags"] = auditLive || procLive
 	cov["process"] = procLive
 	cov["network"] = netconnOn && procLive
-	cov["identity"] = acceptEnv && environLive
+	// A declaration reaches whotyped reliably through the sshrc hook; reading
+	// the session shell's environment is a fallback for long sessions only.
+	cov["identity"] = acceptEnv && f.sshrc == yes
 
 	unknownPlatform := !sshdKnown && f.procRead == unknown
 	for _, fam := range Families {
@@ -649,8 +715,8 @@ func (r *runner) coverage() map[string]bool {
 		if fam == "banner" {
 			res.Optional = true
 		}
-		if fam == "style" && auditdOn && f.auditRule64 == yes && procLive && f.auditdUnit == no {
-			res.Detail += " (procfs still catches long-running commands)"
+		if fam == "identity" && acceptEnv && f.sshrc != yes && environLive {
+			res.Detail += " (long-running sessions are still labelled from /proc)"
 		}
 		r.add(res)
 	}
@@ -676,7 +742,10 @@ func coverageDetail(fam string, live bool, f *facts) string {
 		return "sshd LogLevel below VERBOSE: PTY allocation per session is unknown"
 	case "style":
 		if live {
-			return "command text available (auditd execve and/or procfs): heredoc, compound, tool_wrapper, pager_guard can fire"
+			return "auditd execve records carry command text: heredoc, compound, tool_wrapper, pager_guard can fire for remote sessions"
+		}
+		if f.procRead == yes {
+			return "no active auditd execve rule: /proc only shows commands that outlive a scan, so short remote commands carry no text and style clues cannot fire (a remote agent tops out around 55 without them)"
 		}
 		return "no command text source: neither an active auditd execve rule nor readable /proc"
 	case "flags":
@@ -696,13 +765,13 @@ func coverageDetail(fam string, live bool, f *facts) string {
 		return "netconn disabled or /proc unreadable: AI API connections are not seen"
 	case "identity":
 		if live {
-			return "AcceptEnv AI_AGENT and readable environs: declared agents are classified as declared_agent"
+			return "AcceptEnv AI_AGENT and the sshrc hook: every session's declaration is logged, so declared agents are classified as declared_agent"
 		}
 		switch {
 		case f.sshd != nil && !f.sshd.AcceptsAIAgent():
 			return "sshd does not accept AI_AGENT: a client's declaration never reaches the session"
-		case f.procEnviron != yes:
-			return "AI_AGENT would be accepted but environments are not readable (not root or read_environ false)"
+		case f.sshrc != yes:
+			return "AI_AGENT is accepted but no sshrc hook logs it: declarations from one-command-per-step agents are missed"
 		default:
 			return "identity clue unavailable"
 		}
@@ -716,7 +785,9 @@ func coverageFix(fam string, f *facts) string {
 		return "optional: LogLevel DEBUG1 in " + SSHDDropInPath + " and reload sshd; otherwise rely on rhythm+pty+style"
 	case "rhythm", "pty":
 		return "LogLevel VERBOSE (whotyped check --fix) and reload sshd"
-	case "style", "flags":
+	case "style":
+		return "install auditd and load " + AuditRulesPath + " (whotyped check --fix; augenrules --load)"
+	case "flags":
 		return "install auditd with " + AuditRulesPath + " (whotyped check --fix; augenrules --load) or enable readers.procfs"
 	case "process":
 		return "enable readers.procfs and ensure /proc is mounted"
@@ -726,7 +797,7 @@ func coverageFix(fam string, f *facts) string {
 		if f.sshd != nil && !f.sshd.AcceptsAIAgent() {
 			return "AcceptEnv AI_AGENT (whotyped check --fix) and reload sshd"
 		}
-		return "run whotyped as root with readers.procfs.read_environ: true"
+		return "whotyped check --fix installs " + SSHRCPath + " (or add its AI_AGENT block to your existing sshrc)"
 	}
 	return ""
 }

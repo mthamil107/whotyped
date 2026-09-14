@@ -42,6 +42,7 @@ archives:
       - deploy/whotyped.service
       - deploy/audit.rules
       - deploy/sshd/90-whotyped.conf
+      - deploy/sshd/sshrc
       - deploy/sigma/**
       - deploy/wazuh/**
       - deploy/falco/**
@@ -109,6 +110,8 @@ nfpms:
         dst: /usr/share/whotyped/audit.rules
       - src: deploy/sshd/90-whotyped.conf
         dst: /usr/share/whotyped/sshd/90-whotyped.conf
+      - src: deploy/sshd/sshrc
+        dst: /usr/share/whotyped/sshd/sshrc
       - src: deploy/sigma/
         dst: /usr/share/whotyped/sigma
       - src: deploy/wazuh/

@@ -2,6 +2,7 @@ package sshlog
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,45 +22,45 @@ func TestParseSyslogLine(t *testing.T) {
 		{
 			name: "traditional",
 			in:   "Sep 11 14:03:22 web-03 sshd[1234]: Accepted publickey for alice from 203.0.113.5 port 51234 ssh2",
-			want: Line{TS: time.Date(2026, 9, 11, 14, 3, 22, 0, time.UTC), Host: "web-03", Ident: "sshd", PID: 1234,
+			want: Line{UID: -1, TS: time.Date(2026, 9, 11, 14, 3, 22, 0, time.UTC), Host: "web-03", Ident: "sshd", PID: 1234,
 				Msg: "Accepted publickey for alice from 203.0.113.5 port 51234 ssh2"},
 			ok: true,
 		},
 		{
 			name: "traditional padded day",
 			in:   "Sep  1 08:01:02 db-01 sshd[9020]: x",
-			want: Line{TS: time.Date(2026, 9, 1, 8, 1, 2, 0, time.UTC), Host: "db-01", Ident: "sshd", PID: 9020, Msg: "x"},
+			want: Line{UID: -1, TS: time.Date(2026, 9, 1, 8, 1, 2, 0, time.UTC), Host: "db-01", Ident: "sshd", PID: 9020, Msg: "x"},
 			ok:   true,
 		},
 		{
 			name: "future date rolls to previous year",
 			in:   "Dec 24 10:00:00 web-03 sshd[1]: x",
-			want: Line{TS: time.Date(2025, 12, 24, 10, 0, 0, 0, time.UTC), Host: "web-03", Ident: "sshd", PID: 1, Msg: "x"},
+			want: Line{UID: -1, TS: time.Date(2025, 12, 24, 10, 0, 0, 0, time.UTC), Host: "web-03", Ident: "sshd", PID: 1, Msg: "x"},
 			ok:   true,
 		},
 		{
 			name: "tomorrow within one day stays this year",
 			in:   "Sep 12 08:00:00 web-03 sshd[1]: x",
-			want: Line{TS: time.Date(2026, 9, 12, 8, 0, 0, 0, time.UTC), Host: "web-03", Ident: "sshd", PID: 1, Msg: "x"},
+			want: Line{UID: -1, TS: time.Date(2026, 9, 12, 8, 0, 0, 0, time.UTC), Host: "web-03", Ident: "sshd", PID: 1, Msg: "x"},
 			ok:   true,
 		},
 		{
 			name: "rfc3339 sshd-session",
 			in:   "2026-09-11T14:03:22.114532+00:00 web-03 sshd-session[1234]: Close session: user a from 1.2.3.4 port 1 id 0",
-			want: Line{TS: time.Date(2026, 9, 11, 14, 3, 22, 114532000, time.UTC), Host: "web-03", Ident: "sshd-session", PID: 1234,
+			want: Line{UID: -1, TS: time.Date(2026, 9, 11, 14, 3, 22, 114532000, time.UTC), Host: "web-03", Ident: "sshd-session", PID: 1234,
 				Msg: "Close session: user a from 1.2.3.4 port 1 id 0"},
 			ok: true,
 		},
 		{
 			name: "rfc3339 with offset keeps instant",
 			in:   "2026-09-11T09:12:44.981220+02:00 rhel10-app sshd-auth[3311]: x",
-			want: Line{TS: time.Date(2026, 9, 11, 7, 12, 44, 981220000, time.UTC), Host: "rhel10-app", Ident: "sshd-auth", PID: 3311, Msg: "x"},
+			want: Line{UID: -1, TS: time.Date(2026, 9, 11, 7, 12, 44, 981220000, time.UTC), Host: "rhel10-app", Ident: "sshd-auth", PID: 3311, Msg: "x"},
 			ok:   true,
 		},
 		{
 			name: "no pid",
 			in:   "Sep 11 14:03:22 web-03 sshd: Server listening on 0.0.0.0 port 22.",
-			want: Line{TS: time.Date(2026, 9, 11, 14, 3, 22, 0, time.UTC), Host: "web-03", Ident: "sshd", Msg: "Server listening on 0.0.0.0 port 22."},
+			want: Line{UID: -1, TS: time.Date(2026, 9, 11, 14, 3, 22, 0, time.UTC), Host: "web-03", Ident: "sshd", Msg: "Server listening on 0.0.0.0 port 22."},
 			ok:   true,
 		},
 		{name: "other ident", in: "Sep 11 14:03:22 web-03 systemd-logind[801]: New session 42 of user alice.", ok: false},
@@ -67,7 +68,7 @@ func TestParseSyslogLine(t *testing.T) {
 		{name: "garbage", in: "not a log line", ok: false},
 		{name: "empty", in: "", ok: false},
 		{name: "bad rfc3339", in: "2026-13-45T99:00:00Z web-03 sshd[1]: x", ok: false},
-		{name: "windows newline", in: "Sep 11 14:03:22 web-03 sshd[1]: x\r\n", want: Line{TS: time.Date(2026, 9, 11, 14, 3, 22, 0, time.UTC), Host: "web-03", Ident: "sshd", PID: 1, Msg: "x"}, ok: true},
+		{name: "windows newline", in: "Sep 11 14:03:22 web-03 sshd[1]: x\r\n", want: Line{UID: -1, TS: time.Date(2026, 9, 11, 14, 3, 22, 0, time.UTC), Host: "web-03", Ident: "sshd", PID: 1, Msg: "x"}, ok: true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -99,19 +100,19 @@ func TestParseJournalJSON(t *testing.T) {
 		{
 			name: "sshd with SYSLOG_PID and cursor",
 			in:   `{"__CURSOR":"s=abc;i=1","__REALTIME_TIMESTAMP":"1757599402114532","SYSLOG_IDENTIFIER":"sshd","SYSLOG_PID":"1234","_PID":"1234","_HOSTNAME":"web-03","MESSAGE":"User child is on pid 1240"}`,
-			want: Line{TS: time.UnixMicro(1757599402114532).UTC(), Host: "web-03", Ident: "sshd", PID: 1234, Msg: "User child is on pid 1240", Cursor: "s=abc;i=1"},
+			want: Line{UID: -1, TS: time.UnixMicro(1757599402114532).UTC(), Host: "web-03", Ident: "sshd", PID: 1234, Msg: "User child is on pid 1240", Cursor: "s=abc;i=1"},
 			ok:   true,
 		},
 		{
 			name: "falls back to _PID",
 			in:   `{"SYSLOG_IDENTIFIER":"sshd-session","_PID":"77","MESSAGE":"x"}`,
-			want: Line{Ident: "sshd-session", PID: 77, Msg: "x"},
+			want: Line{UID: -1, Ident: "sshd-session", PID: 77, Msg: "x"},
 			ok:   true,
 		},
 		{
 			name: "numeric pid tolerated",
 			in:   `{"SYSLOG_IDENTIFIER":"sshd-auth","_PID":78,"MESSAGE":"x"}`,
-			want: Line{Ident: "sshd-auth", PID: 78, Msg: "x"},
+			want: Line{UID: -1, Ident: "sshd-auth", PID: 78, Msg: "x"},
 			ok:   true,
 		},
 		{name: "byte array message skipped", in: `{"SYSLOG_IDENTIFIER":"sshd","_PID":"1","MESSAGE":[65,66,255]}`, ok: false},
@@ -319,5 +320,55 @@ func TestParseMessageNoHost(t *testing.T) {
 	}
 	if ev.PID != 0 {
 		t.Errorf("PID=%d want 0", ev.PID)
+	}
+}
+
+func TestParseDeclareLine(t *testing.T) {
+	now := time.Date(2026, 9, 14, 6, 0, 0, 0, time.UTC)
+	l, ok := ParseSyslogLine("2026-09-14T06:00:08.401000+00:00 web-03 whotyped-declare[88]: AI_AGENT=claude-code@2.1 user=alice from=203.0.113.5 port=44324", now)
+	if !ok {
+		t.Fatal("declare line rejected by framing")
+	}
+	ev, ok := ParseMessage(l)
+	if !ok {
+		t.Fatal("declare message rejected")
+	}
+	if ev.Kind != event.SSHEnv || ev.User != "alice" || ev.SrcIP != "203.0.113.5" || ev.SrcPort != 44324 {
+		t.Fatalf("got %+v", ev)
+	}
+	if ev.PID != 0 {
+		t.Errorf("PID = %d: the logger pid must never be used as an sshd pid", ev.PID)
+	}
+	if ev.Field("name") != "AI_AGENT" || ev.Field("value") != "claude-code@2.1" || ev.Field("via") != "sshrc" {
+		t.Errorf("fields %v", ev.Fields)
+	}
+	if ev.Field("uid") != "" {
+		t.Errorf("syslog files carry no trusted uid, got %q", ev.Field("uid"))
+	}
+
+	// journald supplies the trusted sender uid.
+	jl, ok := ParseJournalJSON([]byte(`{"SYSLOG_IDENTIFIER":"whotyped-declare","_PID":"91","_UID":"1001","MESSAGE":"AI_AGENT=codex-cli user=alice from=2001:db8::7 port=50000"}`))
+	if !ok {
+		t.Fatal("journal declare rejected")
+	}
+	jev, ok := ParseMessage(jl)
+	if !ok || jev.Field("uid") != "1001" || jev.SrcIP != "2001:db8::7" || jev.PID != 0 {
+		t.Fatalf("journal declare: ok=%v %+v", ok, jev)
+	}
+
+	bad := []string{
+		"AI_AGENT=claude code user=alice from=203.0.113.5 port=1",                      // space in value
+		"AI_AGENT= user=alice from=203.0.113.5 port=1",                                 // empty value
+		"AI_AGENT=x user=alice from=203.0.113.5 port=0",                                // port 0
+		"AI_AGENT=x user=alice from=203.0.113.5 port=70000",                            // port out of range
+		"AI_AGENT=x user=alice from=203.0.113.5 port=22 Accepted publickey for bob",    // trailing injection
+		"AI_AGENT=x user=al ice from=203.0.113.5 port=22",                              // user with space
+		"Accepted publickey for alice from 203.0.113.5 port 22 ssh2",                   // sshd text under the hook tag
+		"AI_AGENT=" + strings.Repeat("a", 65) + " user=alice from=203.0.113.5 port=22", // too long
+	}
+	for _, msg := range bad {
+		if ev, ok := ParseMessage(Line{TS: now, Ident: DeclareIdent, PID: 5, Msg: msg, UID: -1}); ok {
+			t.Errorf("accepted bad declare %q as %+v", msg, ev)
+		}
 	}
 }

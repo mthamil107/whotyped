@@ -134,6 +134,7 @@ func TestRunProbeUsesSSHDT(t *testing.T) {
 		"proc/1/status":  "Name:\tsystemd\n",
 		"proc/1/environ": "PATH=/usr/bin\x00",
 		"var/log/secure": "",
+		"etc/ssh/sshrc":  SSHRC,
 	})
 	rep := Run(Options{Config: testConfig(t), FS: fsys, Exec: fakeExec(true, false), Probe: true})
 	res := byName(rep)
@@ -156,7 +157,7 @@ func TestRunDegradedHost(t *testing.T) {
 	})
 	rep := Run(Options{Config: testConfig(t), FS: fsys, Exec: fakeExec(false, false)})
 	res := byName(rep)
-	want := map[string]bool{"banner": false, "rhythm": false, "pty": false, "style": true, "flags": true, "process": true, "network": true, "identity": false}
+	want := map[string]bool{"banner": false, "rhythm": false, "pty": false, "style": false, "flags": true, "process": true, "network": true, "identity": false}
 	for fam, w := range want {
 		if rep.Coverage[fam] != w {
 			t.Errorf("coverage[%s] = %v, want %v", fam, rep.Coverage[fam], w)
@@ -303,8 +304,10 @@ func TestRenderers(t *testing.T) {
 // TestFixFilesMatchDeploy pins the Go constants to the canonical files.
 func TestFixFilesMatchDeploy(t *testing.T) {
 	cases := map[string]string{
-		filepath.Join("..", "..", "deploy", "sshd", "90-whotyped.conf"): SSHDDropIn,
-		filepath.Join("..", "..", "deploy", "audit.rules"):              AuditRules,
+		filepath.Join("..", "..", "deploy", "sshd", "90-whotyped.conf"):                       SSHDDropIn,
+		filepath.Join("..", "..", "deploy", "audit.rules"):                                    AuditRules,
+		filepath.Join("..", "..", "deploy", "sshd", "sshrc"):                                  SSHRC,
+		filepath.Join("..", "..", "deploy", "ansible", "roles", "whotyped", "files", "sshrc"): SSHRC,
 	}
 	for path, want := range cases {
 		data, err := os.ReadFile(path)
@@ -369,5 +372,59 @@ func TestSSHDVersionTenIsNotLessThanNine(t *testing.T) {
 	got := r.results[0]
 	if got.Status != StatusPass || !strings.Contains(got.Detail, ">= 9.8") || strings.Contains(got.Detail, "< 9.8") {
 		t.Errorf("sshd.version = %+v", got)
+	}
+}
+
+func TestSSHRCHookDecidesIdentityCoverage(t *testing.T) {
+	base := map[string]string{
+		"proc/1/status":           "Name:\tsystemd\n",
+		"proc/1/environ":          "PATH=/usr/bin\x00",
+		"var/log/audit/audit.log": "",
+	}
+	with := func(extra map[string]string) map[string]string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+
+	// The ubuntu fixture ships the hook: identity is live.
+	rep := Run(Options{Config: testConfig(t), FS: fixtureFS(t, "ubuntu", base), Exec: fakeExec(true, true)})
+	if r := byName(rep)["sshd.sshrc"]; r.Status != StatusPass || !rep.Coverage["identity"] {
+		t.Fatalf("hook present: sshd.sshrc=%+v identity=%v", r, rep.Coverage["identity"])
+	}
+
+	// An operator's own sshrc without the hook: warn, point at the block,
+	// identity not live, and --fix must not claim it will overwrite it.
+	rep = Run(Options{Config: testConfig(t), FS: fixtureFS(t, "ubuntu", with(map[string]string{"etc/ssh/sshrc": "xauth stuff\n"})), Exec: fakeExec(true, true)})
+	r := byName(rep)["sshd.sshrc"]
+	if r.Status != StatusWarn || !strings.Contains(r.Fix, "never edits") || rep.Coverage["identity"] {
+		t.Fatalf("foreign sshrc: %+v identity=%v", r, rep.Coverage["identity"])
+	}
+	if !strings.Contains(byName(rep)["coverage.identity"].Detail, "one-command-per-step") {
+		t.Errorf("coverage.identity detail = %q", byName(rep)["coverage.identity"].Detail)
+	}
+}
+
+func TestLogContentWarnsOnSilentAuthLog(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Readers.SSHLog.Source = "file"
+	cfg.Readers.SSHLog.File = "/var/log/auth.log"
+	files := map[string]string{"proc/1/status": "Name:\tsystemd\n", "etc/ssh/sshrc": SSHRC}
+
+	files["var/log/auth.log"] = "2026-09-14T06:00:02.257655+00:00 lab CRON[12]: (root) CMD (true)\n"
+	rep := Run(Options{Config: cfg, FS: fixtureFS(t, "ubuntu", files), Exec: fakeExec(true, true)})
+	if r := byName(rep)["sshlog.content"]; r.Status != StatusWarn || !strings.Contains(r.Fix, "writable by the syslog daemon") {
+		t.Fatalf("silent auth.log: %+v", r)
+	}
+
+	files["var/log/auth.log"] = "2026-09-14T06:00:08.373565+00:00 lab sshd[59]: Accepted publickey for alice from 127.0.0.1 port 44324 ssh2: ED25519 SHA256:x\n"
+	rep = Run(Options{Config: cfg, FS: fixtureFS(t, "ubuntu", files), Exec: fakeExec(true, true)})
+	if r := byName(rep)["sshlog.content"]; r.Status != StatusPass {
+		t.Fatalf("auth.log with sshd lines: %+v", r)
 	}
 }

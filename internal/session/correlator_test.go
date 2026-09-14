@@ -573,3 +573,71 @@ func TestOnDropFiresForAbsorbedProvisionalTrack(t *testing.T) {
 		t.Fatalf("expire drop: %v", dropped)
 	}
 }
+
+// sshrcDeclare builds the ssh.env event the sshlog reader emits for a line
+// written by the whotyped-declare sshrc hook: PID 0, joined by tuple.
+func sshrcDeclare(ts time.Time, user, ip string, port int, value, uid string) event.Event {
+	e := sshEv(event.SSHEnv, ts, user, ip, port, 0, "name", "AI_AGENT", "value", value, "via", "sshrc")
+	if uid != "" {
+		e.Set("uid", uid)
+	}
+	return e
+}
+
+func TestSSHRCDeclarationJoinsExistingConnection(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "carol", "10.0.0.9", 40000, 700, "fp", fp))
+	c.Apply(sshEv(event.SSHSessionStart, at(1), "carol", "10.0.0.9", 40000, 701, "stype", "command"))
+	got, strong := c.Apply(sshrcDeclare(at(1), "carol", "10.0.0.9", 40000, "claude-code", ""))
+	if got != tr || !strong {
+		t.Fatalf("declaration not joined: got %v", got)
+	}
+	if tr.DeclaredAgent != "claude-code" || len(tr.Connections) != 1 {
+		t.Fatalf("declared=%q connections=%d", tr.DeclaredAgent, len(tr.Connections))
+	}
+	if len(c.Tracks()) != 1 {
+		t.Fatalf("hook line created extra tracks: %d", len(c.Tracks()))
+	}
+}
+
+func TestSSHRCDeclarationNeverCreatesConnections(t *testing.T) {
+	c := New(Options{})
+	// A local user runs logger(1) by hand, naming a session that does not exist.
+	if got, _ := c.Apply(sshrcDeclare(at(0), "carol", "10.0.0.9", 40000, "claude-code", "")); got != nil {
+		t.Fatalf("forged declaration attributed to %v", got)
+	}
+	if n := len(c.Tracks()); n != 0 {
+		t.Fatalf("forged declaration minted %d tracks", n)
+	}
+}
+
+func TestSSHRCDeclarationRejectsForeignTrustedUID(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "carol", "10.0.0.9", 40000, 700, "fp", fp))
+	c.Apply(sshEv(event.SSHPAMOpen, at(0), "carol", "", 0, 700, "uid", "1003"))
+	c.Apply(sshEv(event.SSHPAMOpen, at(0), "mallory", "", 0, 900, "uid", "1004"))
+	// journald says uid 1004 (mallory) wrote a line claiming carol's session.
+	if got, _ := c.Apply(sshrcDeclare(at(1), "carol", "10.0.0.9", 40000, "human", "1004")); got != nil || tr.DeclaredAgent != "" {
+		t.Fatalf("foreign-uid declaration accepted: got=%v declared=%q", got, tr.DeclaredAgent)
+	}
+	// carol's own uid is accepted.
+	if got, _ := c.Apply(sshrcDeclare(at(2), "carol", "10.0.0.9", 40000, "codex-cli", "1003")); got != tr || tr.DeclaredAgent != "codex-cli" {
+		t.Fatalf("own-uid declaration rejected: got=%v declared=%q", got, tr.DeclaredAgent)
+	}
+}
+
+func TestUnattributedAIAgentDoesNotMakeTrackLocal(t *testing.T) {
+	c := New(Options{})
+	tr, _ := c.Apply(sshEv(event.SSHAuthOK, at(0), "frank", "10.0.0.8", 41000, 800, "fp", fp))
+	c.Apply(sshEv(event.SSHSessionStart, at(1), "frank", "10.0.0.8", 41000, 801, "stype", "command"))
+	// A background process outside the session exports AI_AGENT=human.
+	bg := ev(event.ProcSeen, at(2), "comm", "sleep", "cmd", "sleep 120", "env.AI_AGENT", "human")
+	bg.PID, bg.User, bg.Source = 5000, "frank", "procfs"
+	c.Apply(bg)
+	if tr.DeclaredAgent != "" {
+		t.Fatalf("spoofed declaration accepted: %q", tr.DeclaredAgent)
+	}
+	if tr.Mode != "remote_agent" {
+		t.Fatalf("mode = %q, want remote_agent", tr.Mode)
+	}
+}

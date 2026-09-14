@@ -20,4 +20,5 @@ var journalArgs = []string{
 	"SYSLOG_IDENTIFIER=sshd",
 	"+", "SYSLOG_IDENTIFIER=sshd-session",
 	"+", "SYSLOG_IDENTIFIER=sshd-auth",
+	"+", "SYSLOG_IDENTIFIER=" + DeclareIdent,
 }

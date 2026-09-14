@@ -1,0 +1,30 @@
+# whotyped config for the end-to-end lab. No freeze windows here: the freeze
+# path is tested separately by scenarios.sh with its own config.
+state_dir: /var/lib/whotyped
+log_level: info
+readers:
+  sshlog:
+    source: file
+    file: /var/log/auth.log
+  auditd:
+    enabled: false
+  procfs:
+    enabled: true
+    interval: 2s
+    read_environ: true
+  netconn:
+    enabled: false
+scoring:
+  window: 15m
+privacy:
+  command_text: redacted
+allowlist:
+  profiles_enabled: [ansible, vscode-remote]
+sinks:
+  jsonfile:
+    enabled: true
+    path: /var/lib/whotyped/alerts.jsonl
+    min_level: info
+  prometheus:
+    enabled: true
+    listen: 127.0.0.1:9477

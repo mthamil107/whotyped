@@ -24,18 +24,28 @@ const Source = "sshlog"
 type Line struct {
 	TS     time.Time
 	Host   string
-	Ident  string // sshd | sshd-session | sshd-auth
+	Ident  string // sshd | sshd-session | sshd-auth | whotyped-declare
 	PID    int    // 0 when the tag carried no pid
 	Msg    string
 	Cursor string // journald __CURSOR; empty for file sources
+	// UID is journald's trusted _UID of the process that logged the line, or
+	// -1 when unknown (syslog files carry no trusted sender identity).
+	UID int
 }
+
+// DeclareIdent is the syslog tag of the sshrc hook (deploy/sshd/sshrc) that
+// records an AI_AGENT declaration for each SSH session. sshd itself logs
+// accepted environment variables only at DEBUG2, so without the hook a
+// declaration is visible only while a process of the session is alive for a
+// /proc scan, which one-command-per-step agents never are.
+const DeclareIdent = "whotyped-declare"
 
 // validIdent lists the syslog identifiers sshd has used across versions:
 // "sshd" (all versions, listener since 9.8), "sshd-session" (9.8+) and
 // "sshd-auth" (10.0+ pre-auth process).
 func validIdent(s string) bool {
 	switch s {
-	case "sshd", "sshd-session", "sshd-auth":
+	case "sshd", "sshd-session", "sshd-auth", DeclareIdent:
 		return true
 	}
 	return false
@@ -84,7 +94,7 @@ func ParseSyslogLine(s string, now time.Time) (Line, bool) {
 	if m == nil || !validIdent(m[2]) {
 		return Line{}, false
 	}
-	l := Line{TS: ts, Host: m[1], Ident: m[2], Msg: rest[len(m[0]):]}
+	l := Line{TS: ts, Host: m[1], Ident: m[2], Msg: rest[len(m[0]):], UID: -1}
 	if m[3] != "" {
 		l.PID, _ = strconv.Atoi(m[3])
 	}
@@ -122,7 +132,12 @@ func ParseJournalJSON(b []byte) (Line, bool) {
 	if !ok {
 		return Line{}, false
 	}
-	l := Line{Ident: ident, Msg: msg}
+	l := Line{Ident: ident, Msg: msg, UID: -1}
+	if u, ok := jsonString(m["_UID"]); ok && u != "" {
+		if n, err := strconv.Atoi(u); err == nil && n >= 0 {
+			l.UID = n
+		}
+	}
 	l.Host, _ = jsonString(m["_HOSTNAME"])
 	l.Cursor, _ = jsonString(m["__CURSOR"])
 	if p, ok := jsonString(m["SYSLOG_PID"]); ok && p != "" {
@@ -222,6 +237,9 @@ func ParseMessage(l Line) (event.Event, bool) {
 	ev.Set("ident", l.Ident)
 	if l.Host != "" {
 		ev.Set("host", l.Host)
+	}
+	if l.Ident == DeclareIdent {
+		return parseDeclare(l, ev)
 	}
 
 	switch {
@@ -492,4 +510,31 @@ func ParseMessage(l Line) (event.Event, bool) {
 func atoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
+}
+
+// reDeclare matches the sshrc hook's message. Every field is constrained: the
+// hook strips the value to the AI_AGENT name grammar before logging, and a
+// line that does not match exactly is ignored rather than guessed at.
+var reDeclare = regexp.MustCompile(`^AI_AGENT=([A-Za-z0-9._@:+-]{1,64}) user=([A-Za-z0-9_][A-Za-z0-9_.-]{0,31}\$?) from=([0-9A-Fa-f.:]{2,45}) port=(\d{1,5})$`)
+
+// parseDeclare turns a whotyped-declare line into an ssh.env event. PID is
+// deliberately 0: the tag carries the pid of logger(1), which must never be
+// mistaken for an sshd child pid. The correlator joins the declaration to the
+// connection by (user, source IP, source port) and only to one that exists.
+func parseDeclare(l Line, ev event.Event) (event.Event, bool) {
+	m := reDeclare.FindStringSubmatch(l.Msg)
+	if m == nil {
+		return event.Event{}, false
+	}
+	ev.PID = 0
+	ev.Kind = event.SSHEnv
+	ev.User, ev.SrcIP, ev.SrcPort = m[2], m[3], atoi(m[4])
+	if ev.SrcPort < 1 || ev.SrcPort > 65535 {
+		return event.Event{}, false
+	}
+	ev.Set("name", "AI_AGENT").Set("value", m[1]).Set("via", "sshrc")
+	if l.UID >= 0 {
+		ev.Set("uid", strconv.Itoa(l.UID))
+	}
+	return ev, true
 }

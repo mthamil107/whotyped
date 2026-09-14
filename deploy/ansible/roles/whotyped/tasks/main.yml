@@ -70,13 +70,35 @@
 
 - name: Write sshd drop-in
   ansible.builtin.template:
-    src: 50-whotyped.conf.j2
+    src: 90-whotyped.conf.j2
     dest: "{{ whotyped_sshd_dropin }}"
     owner: root
     group: root
     mode: "0644"
   when: whotyped_manage_sshd
   notify: reload sshd
+
+- name: Install the sshrc declaration hook when no sshrc exists
+  ansible.builtin.copy:
+    src: sshrc
+    dest: /etc/ssh/sshrc
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  when: whotyped_manage_sshd and whotyped_manage_sshrc
+
+- name: Check that the existing sshrc carries the whotyped hook
+  ansible.builtin.command: grep -q whotyped-declare /etc/ssh/sshrc
+  register: whotyped_sshrc_hook
+  changed_when: false
+  failed_when: false
+  when: whotyped_manage_sshd and whotyped_manage_sshrc
+
+- name: Warn about an sshrc without the hook
+  ansible.builtin.debug:
+    msg: "/etc/ssh/sshrc exists without the whotyped-declare block; copy it from deploy/sshd/sshrc so one-command agents are labelled"
+  when: whotyped_manage_sshd and whotyped_manage_sshrc and whotyped_sshrc_hook.rc | default(0) != 0
 
 - name: Install auditd
   ansible.builtin.package:

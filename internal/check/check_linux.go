@@ -5,6 +5,7 @@ package check
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -78,6 +79,29 @@ func fixPlatform(opts Options, w io.Writer) ([]Result, int) {
 		}
 	}
 
+	// The sshrc declaration hook. sshd runs /etc/ssh/sshrc for every session,
+	// and an operator's existing file may do unrelated work (xauth, banners,
+	// mounts): install ours only when none exists, never edit theirs.
+	if cur, err := os.ReadFile(SSHRCPath); err == nil {
+		if strings.Contains(string(cur), SSHRCMarker) {
+			results = append(results, Result{Name: "fix.sshrc", Status: StatusPass, Detail: SSHRCPath + " already carries the whotyped-declare hook"})
+		} else {
+			results = append(results, Result{Name: "fix.sshrc", Status: StatusWarn,
+				Detail: SSHRCPath + " exists and is not whotyped's; left unchanged",
+				Fix:    "copy the AI_AGENT block from /usr/share/whotyped/sshd/sshrc into " + SSHRCPath})
+			code = max(code, ExitDegraded)
+		}
+	} else if errors.Is(err, fs.ErrNotExist) {
+		res, _ := installFile(SSHRCPath, SSHRC, 0o644, 0o755)
+		results = append(results, res)
+		if res.Status == StatusFail {
+			code = ExitCannotRun
+		}
+	} else {
+		results = append(results, Result{Name: "fix.sshrc", Status: StatusFail, Detail: SSHRCPath + ": " + err.Error()})
+		code = ExitCannotRun
+	}
+
 	// /etc/audit/rules.d holds root-only policy: create it 0750, never 0755.
 	res, _ = installFile(AuditRulesPath, AuditRules, 0o640, 0o750)
 	results = append(results, res)
@@ -87,6 +111,7 @@ func fixPlatform(opts Options, w io.Writer) ([]Result, int) {
 
 	fmt.Fprintln(w, "Files installed. Apply them without restarting anything:")
 	fmt.Fprintln(w, "  systemctl reload ssh      # Debian/Ubuntu   (or: systemctl reload sshd on RHEL/Fedora/SUSE)")
+	fmt.Fprintln(w, "                            # "+SSHRCPath+" needs no reload: sshd reads it for every new session")
 	fmt.Fprintln(w, "  augenrules --load         # loads /etc/audit/rules.d/*.rules into the running auditd")
 	fmt.Fprintln(w, "  whotyped check            # confirm coverage")
 	return results, code

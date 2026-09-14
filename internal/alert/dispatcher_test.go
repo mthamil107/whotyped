@@ -486,3 +486,42 @@ func TestHashUsernames(t *testing.T) {
 		t.Errorf("hashing must be opt-in: %q %q", a3.User, a3.ActionsHint)
 	}
 }
+
+// TestFreezeEscalationReportsLaterCrossings reproduces the end-to-end lab
+// result: a paramiko session inside a freeze window violated at score 60
+// after four exec channels, then kept going to alert and high. Those later
+// crossings must be reported with the current score, once each.
+func TestFreezeEscalationReportsLaterCrossings(t *testing.T) {
+	c := newClock()
+	d := newTestDispatcher(c)
+	fz := &Freeze{Name: "lab-freeze", Until: c.t.Add(time.Hour)}
+	tr := newTrack()
+
+	if got := flat(d.Observe(tr, suspected(60), fz)); len(got) != 1 || got[0] != "freeze_violation/high" {
+		t.Fatalf("violation %v", got)
+	}
+	c.advance(5 * time.Second)
+	if got := d.Observe(tr, suspected(65), fz); len(got) != 0 {
+		t.Fatalf("still info: %v", flat(got))
+	}
+	c.advance(5 * time.Second)
+	got := d.Observe(tr, suspected(80), fz)
+	if len(got) != 1 || got[0].Event != EvDetected || got[0].Level != score.LevelAlert || got[0].Score != 80 {
+		t.Fatalf("alert crossing in freeze: %+v", flat(got))
+	}
+	if got[0].FreezeWindow == nil || got[0].FreezeWindow.Name != "lab-freeze" {
+		t.Fatalf("freeze window not attached to the escalation")
+	}
+	c.advance(5 * time.Second)
+	if again := d.Observe(tr, suspected(82), fz); len(again) != 0 {
+		t.Fatalf("repeated alert in freeze: %v", flat(again))
+	}
+	c.advance(5 * time.Second)
+	if got := flat(d.Observe(tr, suspected(95), fz)); len(got) != 1 || got[0] != "agent_high/high" {
+		t.Fatalf("high crossing in freeze: %v", got)
+	}
+	c.advance(5 * time.Second)
+	if again := d.Observe(tr, suspected(96), fz); len(again) != 0 {
+		t.Fatalf("repeated high in freeze: %v", flat(again))
+	}
+}

@@ -23,7 +23,7 @@ Cost: a handful of extra lines per connection. No command text is ever logged (s
 Drop-in file written by `whotyped check --fix`:
 
 ```
-# /etc/ssh/sshd_config.d/50-whotyped.conf
+# /etc/ssh/sshd_config.d/90-whotyped.conf
 LogLevel VERBOSE
 AcceptEnv AI_AGENT AI_AGENT_*
 ```
@@ -33,6 +33,23 @@ AcceptEnv AI_AGENT AI_AGENT_*
 ## sshd: AcceptEnv AI_AGENT (recommended)
 
 Lets a cooperative client declare itself (`docs/spec/ai-agent-over-ssh.md`). Without it sshd discards the variable silently. Zero privacy cost; the variable is set by the client and only says "I am an agent".
+
+## sshd: the sshrc declaration hook (recommended)
+
+`AcceptEnv` puts `AI_AGENT` into the session, but sshd does not log it below DEBUG2. Agents usually run one short command per SSH session, which ends before a `/proc` scan could read its environment. So a declaration needs to be written down when the session starts.
+
+`/etc/ssh/sshrc` does that. sshd runs it with `/bin/sh`, as the user, for every session, after the client's environment is set and before the command runs. whotyped's hook ([`deploy/sshd/sshrc`](../../deploy/sshd/sshrc)) logs one line to `authpriv` with the tag `whotyped-declare`:
+
+```
+whotyped-declare[4412]: AI_AGENT=claude-code user=alice from=203.0.113.5 port=51234
+```
+
+- `whotyped check --fix` installs it only when the host has no `/etc/ssh/sshrc`. If you already have one, `check` warns and you copy the `AI_AGENT` block into it; the package ships the file as `/usr/share/whotyped/sshd/sshrc`.
+- It needs no reload: sshd reads the file for each new session.
+- It keeps X11 forwarding working. When `/etc/ssh/sshrc` exists sshd stops running `xauth` itself, so the hook carries the `xauth` block from sshd(8).
+- It does not touch the command's stdin. The end-to-end lab pipes data through a session with the hook installed and checks it arrives intact.
+- sshd skips it for users who have `~/.ssh/rc`.
+- Any local user can write a line with that tag using `logger(1)`. whotyped only attaches it to an SSH connection that already exists for the same user, address and port, never creates a connection from it, and on journald rejects it when the trusted sender uid belongs to someone else.
 
 ## sshd: LogLevel DEBUG1 (optional)
 
@@ -110,6 +127,7 @@ Excluded on purpose: `kubectl exec`, `docker exec` and AWS SSM sessions have `au
 
 ```
 sudo sshd -T | grep -Ei '^(loglevel|acceptenv|permituserenvironment)'
+grep -c whotyped-declare /etc/ssh/sshrc
 sudo auditctl -l | grep whotyped
 sudo whotyped check
 ```

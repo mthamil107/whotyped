@@ -46,7 +46,20 @@ To apply the recommended settings:
 sudo whotyped check --fix
 ```
 
-This writes an sshd drop-in under `/etc/ssh/sshd_config.d/` (VERBOSE plus AcceptEnv; `check` prints the exact file name) and `/etc/audit/rules.d/90-whotyped.rules` (from `deploy/audit.rules`), reloads sshd and loads the audit rules. It does not enable `DEBUG1`; see `sshd-and-auditd.md` for why that is optional. Run `check` again afterwards; it should say `ok` on every line that matters to you.
+This writes three files and changes nothing else:
+
+- `/etc/ssh/sshd_config.d/90-whotyped.conf`: `LogLevel VERBOSE` and `AcceptEnv AI_AGENT`.
+- `/etc/ssh/sshrc`: the hook that logs `AI_AGENT` declarations, only if the host has no sshrc yet.
+- `/etc/audit/rules.d/90-whotyped.rules`: the execve rule, from `deploy/audit.rules`.
+
+It runs `sshd -t` but never reloads or restarts anything. Apply the changes yourself:
+
+```sh
+sudo systemctl reload ssh     # or: sudo systemctl reload sshd on RHEL, Fedora, SUSE
+sudo augenrules --load
+```
+
+It does not enable `DEBUG1`; see `sshd-and-auditd.md` for why that is optional. Run `check` again afterwards and read the coverage line at the bottom.
 
 ## 3. Start it
 

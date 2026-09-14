@@ -81,6 +81,11 @@ type trackMemo struct {
 	declaredAt time.Time
 	freezeName string
 	freezeAt   time.Time
+	// freezeVerdict is the highest scorer level already reported inside the
+	// current freeze window. The violation alert carries the window's level
+	// (high by default), which lifts Track.MaxLevel, so behavioural crossings
+	// after it are tracked here instead.
+	freezeVerdict score.Level
 }
 
 // Dispatcher applies the re-alert policy and fans alerts out to sinks.
@@ -359,13 +364,28 @@ func (d *Dispatcher) Observe(t *session.Track, v score.Verdict, freeze *Freeze) 
 		if violating {
 			d.tm.Lock()
 			seen := memo.freezeName == freeze.Name && memo.freezeAt.Equal(freeze.Until)
+			escalated := false
 			if !seen {
 				memo.freezeName, memo.freezeAt = freeze.Name, freeze.Until
+				memo.freezeVerdict = v.Level
+			} else if v.Level.Rank() >= score.LevelAlert.Rank() && v.Level.Rank() > memo.freezeVerdict.Rank() {
+				// The violation went out early (for example at 4 exec
+				// channels and score 60); the same session has since crossed
+				// alert or high on its own evidence. Report that with the
+				// current score and reasons instead of waiting for the
+				// still_active cadence.
+				memo.freezeVerdict = v.Level
+				escalated = true
 			}
 			d.tm.Unlock()
-			if !seen {
+			switch {
+			case !seen:
 				emit(EvFreeze)
-			} else if now.Sub(t.LastAlert) >= d.opts.RealertInterval {
+			case escalated && v.Level == score.LevelHigh:
+				emit(EvHigh)
+			case escalated:
+				emit(EvDetected)
+			case now.Sub(t.LastAlert) >= d.opts.RealertInterval:
 				emit(EvStillActive)
 			}
 			return out

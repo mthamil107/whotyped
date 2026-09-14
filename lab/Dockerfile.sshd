@@ -17,7 +17,7 @@ RUN apt-get update \
  && chmod 0440 /etc/sudoers.d/alice /etc/sudoers.d/ai-agent-envkeep
 
 # authorized_keys are bind-mounted from ./keys at runtime (see docker-compose.yml).
-COPY <<'EOF' /etc/ssh/sshd_config.d/50-whotyped.conf
+COPY <<'EOF' /etc/ssh/sshd_config.d/90-whotyped.conf
 LogLevel VERBOSE
 AcceptEnv AI_AGENT AI_AGENT_*
 PermitUserEnvironment AI_AGENT,AI_AGENT_*

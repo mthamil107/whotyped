@@ -18,7 +18,7 @@ whotyped_arch: "{{ whotyped_arch_map[ansible_architecture] | default('amd64') }}
 # sshd
 whotyped_manage_sshd: true
 whotyped_sshd_loglevel: VERBOSE          # VERBOSE | DEBUG1
-whotyped_sshd_dropin: /etc/ssh/sshd_config.d/50-whotyped.conf
+whotyped_sshd_dropin: /etc/ssh/sshd_config.d/90-whotyped.conf
 whotyped_sshd_service: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
 
 # auditd
@@ -43,3 +43,7 @@ whotyped_prometheus_listen: ""           # e.g. "127.0.0.1:9477" to enable
 whotyped_freeze_windows: []              # [{name: "release-freeze", start: "2026-12-20T00:00:00Z", end: "2027-01-03T00:00:00Z", level: high}]
 whotyped_allowlist_profiles: []          # names from rules/allowlist.yaml, e.g. [ansible, vscode-remote]
 whotyped_config_extra: {}                # merged at top level of the config (keys must exist in deploy/config.example.yaml)
+
+# sshrc declaration hook (logs AI_AGENT for every SSH session). Installed only
+# when /etc/ssh/sshrc does not exist; an existing sshrc is never overwritten.
+whotyped_manage_sshrc: true

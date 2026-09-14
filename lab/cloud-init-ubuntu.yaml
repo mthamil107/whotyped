@@ -45,7 +45,7 @@ users:
       - 'environment="AI_AGENT=lab-agent",environment="AI_AGENT_OPERATOR=alice" ssh-ed25519 REPLACE_ME_DEPLOY_AGENT_PUBLIC_KEY deploy-agent@lab'
 
 write_files:
-  - path: /etc/ssh/sshd_config.d/50-whotyped.conf
+  - path: /etc/ssh/sshd_config.d/90-whotyped.conf
     permissions: "0644"
     content: |
       # whotyped lab: VERBOSE gives "Starting session:" lines; DEBUG1 adds the client banner.

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stand-in for the Claude Code CLI: a script named "claude" gets comm=claude,
+# keeps its argv (including any skip-permissions flag) and inherits the
+# caller's environment. It does nothing but wait.
+sleep "${FAKE_CLAUDE_SECONDS:-40}"

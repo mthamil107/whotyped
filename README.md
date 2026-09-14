@@ -61,7 +61,9 @@ Two ways, both on every alert:
 
 1. **Self-declared.** Honest tooling sets `AI_AGENT=<name>` over SSH
    (`ssh -o SetEnv=AI_AGENT=claude-code ...`, allowed by `AcceptEnv AI_AGENT`).
-   The session is classified `declared_agent`, whatever its score.
+   A small `/etc/ssh/sshrc` hook logs the declaration for every session, so
+   even one-command-per-step agents are labelled `declared_agent`. The label
+   does not hide behaviour: a loud declared agent still alerts.
 2. **Detected.** Seven clue families are scored with per-family caps; the sum
    is clamped to 100. `info` at 40, `alert` at 70 (needs two families), `high`
    at 90. Interactive humans get negative clues.
@@ -118,6 +120,7 @@ inside a configured change-freeze window).
 
 - Linux with OpenSSH (8.x to 10.x; the 9.8 `sshd-session` split is handled) and either journald or `/var/log/auth.log` / `/var/log/secure`.
 - sshd `LogLevel VERBOSE` and `AcceptEnv AI_AGENT`. `whotyped check --fix` writes `/etc/ssh/sshd_config.d/90-whotyped.conf`; reload, do not restart.
+- The `/etc/ssh/sshrc` declaration hook ([`deploy/sshd/sshrc`](deploy/sshd/sshrc)). `check --fix` installs it when the host has no sshrc and never edits an existing one. sshd logs accepted variables only at DEBUG2, so without the hook declarations are seen only for long-running sessions.
 - auditd with an execve rule: optional but recommended, it is what gives command text for remote sessions. `check --fix` writes `/etc/audit/rules.d/90-whotyped.rules`.
 - root, or `CAP_DAC_READ_SEARCH` (logs), `CAP_SYS_PTRACE` (other users' `/proc/PID/environ`, where `AI_AGENT` lives) and `CAP_SYSLOG`. The systemd unit grants exactly these and sandboxes the rest.
 
@@ -135,6 +138,7 @@ what to change.
 
 - **Evasion is easy for an attacker who knows the scoring**: allocate a PTY, wait a few seconds between commands, avoid heredocs, spoof an OpenSSH banner. whotyped catches the common case, the default behaviour of today's tools, not a determined adversary. The spoof-resistant path is declaration, enforced by policy on the key.
 - The client banner is only logged at `LogLevel DEBUG1`; without it a paramiko server scores about 70 instead of 88.
+- Without auditd, a remote agent driving the host over SSH tops out around 55 (`info`): sshd logs give rhythm and PTY clues but no command text. The end-to-end lab measured exactly that; see [`lab/e2e/README.md`](lab/e2e/README.md).
 - No keystroke timing yet. That needs tlog or eBPF and is Phase 2.
 - SSH only. `kubectl exec`, SSM sessions and serial consoles are later phases.
 - Linux hosts only. Parsers and replay run on any OS, the readers do not. No Windows target.

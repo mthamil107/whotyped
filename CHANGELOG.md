@@ -6,6 +6,29 @@ All notable changes to whotyped are recorded here. The format follows
 
 ## [Unreleased]
 
+### Found by the end-to-end lab
+
+- Declarations now reach whotyped for one-command-per-step agents. A new
+  `/etc/ssh/sshrc` hook (`deploy/sshd/sshrc`) logs `AI_AGENT` with the
+  session's address and port under the tag `whotyped-declare`; the sshd log
+  reader parses it and the correlator attaches it only to an existing
+  connection for the same user, address and port, rejecting it when
+  journald's trusted `_UID` belongs to another user. `check --fix` installs
+  the hook when the host has no sshrc and never edits an existing one; the
+  Ansible role does the same; packages ship it under `/usr/share/whotyped/sshd/`.
+- Inside a freeze window, a session that crosses alert or high after its
+  violation alert is reported again with the current score and reasons,
+  instead of waiting for the 30-minute re-alert.
+- `check` warns when the auth log it would follow holds no sshd lines, reports
+  style coverage only when auditd is active, and reports identity coverage
+  only when the sshrc hook is installed.
+- A background process that only exports `AI_AGENT` no longer turns an SSH
+  track into a `local_agent` track.
+- The Ansible role writes `/etc/ssh/sshd_config.d/90-whotyped.conf`, the same
+  name `check --fix` uses (was `50-whotyped.conf`).
+- New `lab/e2e`: real sshd, rsyslog, `/proc` and SSH clients in a container,
+  with 14 asserted expectations across two passes.
+
 ### Security and hardening
 
 - Self-declaration no longer silences detection: a `declared_agent` track that
