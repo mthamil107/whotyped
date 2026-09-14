@@ -42,7 +42,10 @@ jobs:
         run: |
           go run ./cmd/whotyped simulate --offline --scenario claude-bash
           go run ./cmd/whotyped simulate --offline --scenario paramiko-mcp
-          go run ./cmd/whotyped run --replay testdata/dataset/mcp-paramiko/events.jsonl --dry-run | grep -q '"event":"agent_detected"'
+          # Write to a file first: grep -q exits at the first match, and with
+          # pipefail the replay would then die of a broken pipe.
+          go run ./cmd/whotyped run --replay testdata/dataset/mcp-paramiko/events.jsonl --dry-run > "$RUNNER_TEMP/replay.jsonl"
+          grep -q '"event":"agent_detected"' "$RUNNER_TEMP/replay.jsonl"
 
   cross:
     name: cross-build
