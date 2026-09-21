@@ -6,6 +6,12 @@ All notable changes to whotyped are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-21
+
+First public release. Pre-1.0: the alert schema and rule-pack format may
+still change, and the `rhythm.think_time` clue is provisional pending human
+baseline data from pilots.
+
 ### Found by the pilot on a real server (2026-09-14)
 
 See `docs/research/06-pilot-2026-09-14.md`.
@@ -148,4 +154,5 @@ See `docs/research/06-pilot-2026-09-14.md`.
 - `rhythm.think_time` has no human baseline yet; expect tuning after pilots.
 - One real host tested (Ubuntu 20.04, OpenSSH 8.2) plus the container lab.
 
-[Unreleased]: https://github.com/mthamil107/whotyped/commits/main
+[Unreleased]: https://github.com/mthamil107/whotyped/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mthamil107/whotyped/releases/tag/v0.1.0
