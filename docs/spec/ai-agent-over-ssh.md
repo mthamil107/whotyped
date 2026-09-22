@@ -164,7 +164,22 @@ From `docs/research/02-agent-fingerprints.md`. "Could adopt" means the underlyin
 | SKIPPINGpetticoatconvent/go-ssh-mcp | x/crypto/ssh | `Session.Setenv` | yes | |
 | Brainwires/mcp-secure-shell | russh or libssh2 (UNVERIFIED) | russh `set_env`; libssh2 `libssh2_channel_setenv` | probably | library not confirmed |
 
-The agent CLIs themselves (Claude Code, Codex, Gemini CLI, Cursor CLI, Goose, Copilot CLI) have no built-in SSH tool; they call the system `ssh`. For them the fix is one line in the user's `~/.ssh/config`, or a wrapper that passes `-o SetEnv=AI_AGENT=...`. OpenSSH has no "forward this local variable" option for `SetEnv`, so the value must be written into the config or supplied on the command line.
+The agent CLIs themselves (Claude Code, Codex, Gemini CLI, Cursor CLI, Goose, Copilot CLI) have no built-in SSH tool; they call the system `ssh`. That makes them declarable today, without any change from their vendors, because each already exports a marker into the shells it spawns: `CLAUDECODE`, `CURSOR_AGENT`, `GEMINI_CLI`, `CODEX_SANDBOX`, `GOOSE_PROVIDER`, `COPILOT_MODEL` (see `docs/research/02-agent-fingerprints.md`).
+
+`SetEnv` writes a literal value, so it cannot carry a variable the agent set. `SendEnv` forwards one from the client's own environment, which is exactly what is needed:
+
+```
+# ~/.ssh/config on the machine the agent runs on
+Host *
+    SendEnv AI_AGENT AI_AGENT_* CLAUDECODE CURSOR_AGENT GEMINI_CLI CODEX_SANDBOX
+```
+
+```
+# /etc/ssh/sshd_config on the server
+AcceptEnv AI_AGENT AI_AGENT_* CLAUDECODE CURSOR_AGENT GEMINI_CLI CODEX_SANDBOX
+```
+
+A variable that is not set locally is simply not sent, so the same two lines cover every tool and stay quiet for a human's own sessions. `AI_AGENT` remains the preferred name because it carries the tool's identity rather than a vendor's internal flag; the vendor markers are the fallback that works before anyone adopts anything.
 
 ## 8. How to adopt in 10 lines (MCP server maintainers)
 
