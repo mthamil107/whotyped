@@ -78,7 +78,7 @@ Label `agent-mcp-ssh2-health-01`. Exec-only `run-command` per call.
 
 Persistent sentinel-based shell: one connection, many commands in one PTY-less session. Label `agent-mcp-asyncssh-health-01`. Expected: fewer `Starting session` lines (possibly one), rhythm must come from auditd execves. This is the case that most needs auditd; record with and without the audit rule loaded (`auditctl -D` temporarily) under `-noaudit-` in the label.
 
-Variant for each MCP server: patch the server (or its config, if it already supports it) to send `AI_AGENT=<server-name>@<version>` per `docs/spec/ai-agent-over-ssh.md` §4. Label prefix `declared-mcp-`. These patches become the PRs in the spec appendix.
+Variant for each MCP server: patch the server (or its config, if it already supports it) to send `AI_AGENT=<server-name>` per `docs/spec/ai-agent-over-ssh.md` §1. The name only: the spec discourages `@<version>` toward hosts the user does not control. Label prefix `declared-mcp-`. These patches become the PRs in the spec appendix.
 
 ## D. Humans (mode: none, expected class human, score under 40)
 

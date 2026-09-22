@@ -123,7 +123,7 @@ AcceptEnv AI_AGENT AI_AGENT_* CLAUDECODE CURSOR_AGENT GEMINI_CLI CODEX_SANDBOX
 
 Why it matters beyond whotyped: while every agent is silent, silence tells you nothing. Once honest tools announce themselves, silence becomes the unusual choice, and detection gets easier for everyone. The convention is free to implement, needs no permission, and names no product.
 
-Adopters so far: [ssh-mcp](https://github.com/tufantunc/ssh-mcp) ([pull request open](https://github.com/tufantunc/ssh-mcp/pull/227)). Sending one? Open an issue and the table in the spec gets your name.
+Adopters so far: [ssh-mcp](https://github.com/tufantunc/ssh-mcp), [merged](https://github.com/tufantunc/ssh-mcp/pull/227) on 2026-09-22. Sending one? Open an issue and the table in the spec gets your name.
 
 ---
 

@@ -12,19 +12,21 @@ Why: several funded vendors are building agent detection on endpoints, and Telep
 
 ## Now
 
-**N1. Make declaration possible without vendor cooperation.**
-The spec currently says OpenSSH cannot forward a local variable. That is wrong: `SendEnv` does exactly that, and the major agent CLIs already set a marker in the shells they spawn (`CLAUDECODE`, `CURSOR_AGENT`, `GEMINI_CLI`, `CODEX_SANDBOX`). So an operator can declare today with one line of `~/.ssh/config` on the client and one `AcceptEnv` line on the server, with no vendor involvement at all. This is the cheapest adoption lever the project has and it was missed.
+**N1. Make declaration possible without vendor cooperation. Mostly done.**
+The spec used to say OpenSSH cannot forward a local variable. That was wrong: `SendEnv` does exactly that, and the major agent CLIs already set a marker in the shells they spawn (`CLAUDECODE`, `CURSOR_AGENT`, `GEMINI_CLI`, `CODEX_SANDBOX`). So an operator can declare today with one line of `~/.ssh/config` on the client and one `AcceptEnv` line on the server, with no vendor involvement at all. This is the cheapest adoption lever the project has and it was missed for a whole release.
 
-- Correct section 7 of the spec and add a client-configuration appendix covering `SendEnv`.
-- Teach the sshrc hook and the log reader to accept the vendor markers, not only `AI_AGENT`, and map them to an agent name.
-- Spec v0.2: mark `@version` as not recommended toward untrusted hosts (the first adopter's objection, and he was right), add an adopter FAQ answering the safety question he had to measure himself, and take a position on the `AGENT` versus `AI_AGENT` naming debate rather than being welded to one name.
+- ~~Correct the spec and lead the quick start with `SendEnv`.~~ Done in v0.2.
+- ~~Mark `@version` as not recommended toward untrusted hosts, add the adopter FAQ, take a position on the `AGENT` versus `AI_AGENT` naming.~~ Done in v0.2. The naming question is still live upstream — `agentsmd/agents.md#136` (open since 2026-01-08) and `vercel/vercel#15336` (open since 2026-03-02) both argue for `AGENT`, which Goose, Amp and Bun use.
+- **Still open:** the sshrc hook (`deploy/sshd/sshrc:22`) tests `AI_AGENT` only, so a session declared through a vendor marker alone produces no log line. The correlator and the /proc reader already understand the markers; the declaration hook does not. Until this lands, the quick start's `SendEnv` line works end to end only for `AI_AGENT` itself.
 
-Exit: a user running any of those CLIs can make their sessions self-declare by editing two config files, documented end to end.
+Exit: a user running any of those CLIs can make their sessions self-declare by editing two config files, documented end to end. Not met yet — the last bullet is what is missing.
 
-**N2. Land the first adopter.**
-`tufantunc/ssh-mcp#227` is open with the maintainer's agreement already on record. Its CI is held pending first-contributor approval. After it merges, offer the same one-field change to `bvisible/mcp-ssh-manager` (ssh2, ~480 stars, active) and at most two smaller ones. The Go server named in earlier research no longer exists and one Python server has been dead since April 2025; the nine-server campaign was never real.
+**N2. Land the first adopter. Done 2026-09-22.**
+`tufantunc/ssh-mcp#227` merged. The maintainer reviewed by pushing a second commit rather than sending a list, and that review was the most useful the project has had: it found a third channel the patch missed (`openShell`, the workflow that project's own README documents), a call site whose test could be deleted with the whole 1007-test suite still green, and a Dropbear assertion that could not fail. It also produced a correction to the spec — `AcceptEnv` governs what a server stores, not what a client sends, so the declaration reaches every host whether or not it opted in. Spec v0.3 carries all of it.
 
-Exit: one merged adopter, listed in the spec's compatibility table.
+Next: offer the same change to `bvisible/mcp-ssh-manager` (ssh2, ~480 stars, active) and at most two smaller ones, with the corrected text — a switch defaulting to on, and one test per channel. The Go server named in earlier research no longer exists and one Python server has been dead since April 2025; the nine-server campaign was never real.
+
+Exit: met. One merged adopter, listed in the spec's compatibility table.
 
 **N3. False-alarm baseline, running in the background.**
 Not a gate on N1 or N2. It needs other people's hosts, which do not exist yet, so it starts when the first one is offered.
