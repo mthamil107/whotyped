@@ -372,3 +372,20 @@ func TestParseDeclareLine(t *testing.T) {
 		}
 	}
 }
+
+func TestNeutralDeclareTagAccepted(t *testing.T) {
+	// The published convention recommends a vendor-neutral tag; a host may run
+	// whotyped's own hook or anyone else's written against the spec.
+	now := time.Date(2026, 9, 22, 6, 0, 0, 0, time.UTC)
+	for _, tag := range []string{DeclareIdent, DeclareIdentNeutral} {
+		line := "2026-09-22T06:00:08.401000+00:00 web-03 " + tag + "[88]: AI_AGENT=claude-code user=alice from=203.0.113.5 port=44324"
+		l, ok := ParseSyslogLine(line, now)
+		if !ok {
+			t.Fatalf("%s: framing rejected", tag)
+		}
+		ev, ok := ParseMessage(l)
+		if !ok || ev.Kind != event.SSHEnv || ev.Field("value") != "claude-code" || ev.User != "alice" {
+			t.Fatalf("%s: got ok=%v %+v", tag, ok, ev)
+		}
+	}
+}

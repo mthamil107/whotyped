@@ -40,12 +40,17 @@ type Line struct {
 // /proc scan, which one-command-per-step agents never are.
 const DeclareIdent = "whotyped-declare"
 
+// DeclareIdentNeutral is the vendor-neutral tag the published convention
+// recommends (docs/spec/ai-agent-over-ssh.md). Both are accepted: a host may
+// run whotyped's own hook, or any hook written against the spec.
+const DeclareIdentNeutral = "ai-agent-declare"
+
 // validIdent lists the syslog identifiers sshd has used across versions:
 // "sshd" (all versions, listener since 9.8), "sshd-session" (9.8+) and
 // "sshd-auth" (10.0+ pre-auth process).
 func validIdent(s string) bool {
 	switch s {
-	case "sshd", "sshd-session", "sshd-auth", DeclareIdent:
+	case "sshd", "sshd-session", "sshd-auth", DeclareIdent, DeclareIdentNeutral:
 		return true
 	}
 	return false
@@ -238,7 +243,7 @@ func ParseMessage(l Line) (event.Event, bool) {
 	if l.Host != "" {
 		ev.Set("host", l.Host)
 	}
-	if l.Ident == DeclareIdent {
+	if l.Ident == DeclareIdent || l.Ident == DeclareIdentNeutral {
 		return parseDeclare(l, ev)
 	}
 

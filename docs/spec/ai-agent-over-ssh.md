@@ -1,175 +1,31 @@
-# AI_AGENT over SSH — draft standard v0.1
+# AI_AGENT over SSH
 
-Status: draft, 2026-09-11. Maintained in the whotyped repository. Comments as GitHub issues, please.
+**A one-variable convention that lets an SSH session say it is driven by an AI agent.**
 
-## 1. Purpose
+Version 0.2 draft, 2026-09-22. Maintained in the [whotyped](https://github.com/mthamil107/whotyped) repository. Comments and corrections as issues, please. Free to implement, no permission needed, no attribution required.
 
-Server operators need to know when an SSH session is driven by an AI agent rather than a person, even when the agent uses a person's key. Today there is no convention for an SSH client to say so. This document defines one. It is deliberately small: one environment variable, sent with the SSH protocol's existing `env` channel request, and accepted with one line of `sshd_config`.
+"MUST", "SHOULD" and "MAY" carry their [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) meanings.
 
-The convention is cooperative. It lets well-behaved agents identify themselves. It does not detect agents that stay silent. Detection of silent agents is a separate problem (see the whotyped scorer); this spec only removes the excuse "there was no way to say it".
+---
 
-## 2. The convention
+## The problem
 
-### 2.1 Client side
+An AI agent runs a command on a server over SSH, using a person's key. The server records the person. Anyone reading the logs later sees a name and has no way to know a model was at the keyboard.
 
-An SSH client acting on behalf of an AI agent SHOULD request the environment variable `AI_AGENT` on every session channel it opens (shell, exec or subsystem).
+Nothing in the SSH protocol says who is driving. Auditors ask "who ran this command", and the honest answer today is "we do not know".
 
-```
-AI_AGENT=<name>[@<version>]
-```
+This document defines the smallest possible way to answer: one environment variable, carried by a protocol request SSH has had since 2006, accepted with one line of server configuration.
 
-- `<name>`: lowercase ASCII letters, digits and hyphens, matching `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 64 characters. This is the grammar used by Vercel detect-agent's `agents.json` (`claude-code`, `cursor-cli`, `codex-cli`, `gemini-cli`, `goose`, `github-copilot`). Reuse an existing detect-agent id where one exists: https://raw.githubusercontent.com/vercel/detect-agent/main/agents.json
-- `<version>`: optional, free-form after `@`, no spaces, at most 32 characters. Example: `claude-code@2.0.1`.
-- An MCP server or other intermediary that opens SSH sessions for an agent SHOULD send its own name if it cannot learn the agent's, e.g. `AI_AGENT=ssh-mcp@1.2.0`. Something truthful beats nothing.
+It is cooperative by design. It lets honest tools identify themselves. It does not catch tools that stay quiet, and it is not meant to.
 
-Two optional variables MAY be sent alongside:
+---
 
-```
-AI_AGENT_SESSION=<opaque id>      up to 128 chars, printable ASCII, no spaces
-AI_AGENT_OPERATOR=<human handle>  up to 128 chars, e.g. an email or username
-```
+## Quick start
 
-`AI_AGENT_SESSION` lets an operator join server-side evidence to the agent's own transcript. `AI_AGENT_OPERATOR` names the accountable human when the SSH login is a shared or service account. Neither is required.
-
-Clients MUST NOT put newlines, NUL bytes or shell metacharacters in any of these values. Servers SHOULD drop values that violate the grammar rather than sanitising them.
-
-### 2.2 Server side
-
-The server accepts the declaration with:
+**If you run an AI coding tool**, your sessions can declare themselves today, without waiting for anyone. The major CLIs already set a marker in the shells they spawn, and OpenSSH can forward it:
 
 ```
-# /etc/ssh/sshd_config.d/50-ai-agent.conf
-AcceptEnv AI_AGENT AI_AGENT_*
-```
-
-Without `AcceptEnv`, OpenSSH silently discards the request (the default is to accept nothing; the discard is logged only at DEBUG2 as `Ignoring env request AI_AGENT: disallowed name`). Accepting these names is safe: they carry no meaning to the shell or to any known program.
-
-An accepted variable is not logged either (only at DEBUG2, as `Setting env`). A server that wants a record of every declaration SHOULD log it from `/etc/ssh/sshrc`, which sshd runs for each session with the client's environment already set and before the session's command starts:
-
-```sh
-# /etc/ssh/sshrc (full file, with the xauth block sshd(8) requires: deploy/sshd/sshrc)
-if [ -n "${AI_AGENT:-}" ] && command -v logger >/dev/null 2>&1; then
-	whotyped_agent=$(printf '%s' "$AI_AGENT" | LC_ALL=C tr -cd 'A-Za-z0-9._@:+-' | cut -c1-64)
-	set -- ${SSH_CONNECTION:-}
-	[ -n "$whotyped_agent" ] && [ -n "${1:-}" ] && logger -p authpriv.info -t whotyped-declare -- \
-		"AI_AGENT=$whotyped_agent user=${USER:-$(id -un)} from=$1 port=$2" 2>/dev/null || :
-fi
-```
-
-This matters for the common agent shape: one short `ssh host cmd` per step. Those commands finish long before any periodic scan could read the session environment. The line is a claim a local user could also write with `logger(1)`, so a consumer must only attach it to an SSH connection that already exists for the same user, address and port, and should check journald's trusted `_UID` where available. sshd skips `/etc/ssh/sshrc` for a user who has `~/.ssh/rc`.
-
-### 2.3 Spoof-resistant variants
-
-A client can claim anything. Two OpenSSH features let the server impose the value instead. Both rely on the environment precedence in OpenSSH's `do_setup_env()`: client variables are applied first, then `authorized_keys` `environment=` options, then `sshd_config` `SetEnv`, and later assignments win (see `docs/research/03-ssh-auditd-proc.md` §2).
-
-Per group of agent accounts:
-
-```
-Match Group agents
-    SetEnv AI_AGENT=unknown-agent
-    # optionally: ForceCommand, PermitTTY no, etc.
-```
-
-Per key, when an agent has its own key on a human's account:
-
-```
-# sshd_config
-PermitUserEnvironment AI_AGENT,AI_AGENT_*
-# ~/.ssh/authorized_keys
-environment="AI_AGENT=claude-code",environment="AI_AGENT_OPERATOR=alice" ssh-ed25519 AAAA... alice-claude-laptop
-```
-
-`PermitUserEnvironment` accepts a pattern list of variable names (OpenSSH 7.8 and later; UNVERIFIED for the exact first version). Enable only these names, never `yes`, because a user-writable `environment=` for `LD_PRELOAD` or `PATH` is a known hazard. With either variant, a client that sends `AI_AGENT=` with a different value is overridden, and one that sends nothing is still labelled.
-
-## 3. How consumers read it
-
-- **Any process in the session.** The variable is in the environment of the session shell and everything it spawns. `/proc/<pid>/environ` (same uid or `CAP_SYS_PTRACE`) shows it. It is not visible to PAM session hooks: `pam_open_session` runs before the channel `env` request is processed (research doc 03 §2).
-- **whotyped.** The sshd log reader picks up the `whotyped-declare` line from the sshrc hook (section 2.2) and joins it to the connection by user, source address and port. As a fallback for long sessions, the procfs reader reads the environ of each SSH session shell and joins it by `/proc/<pid>/sessionid` or parent sshd pid. Either way it emits `class=declared_agent`, `agent=<name>` at level `info`. A declaration is a label, not a pass: if the session's behaviour alone reaches the alert or high threshold, the usual `agent_detected` / `agent_high` events follow with the class kept, and inside a freeze window any declared activity is a violation. The declaration is only accepted from the session itself (accepted `SetEnv`, or a process attributed to the session by audit session id or parent sshd pid), so a stray `AI_AGENT=x` process left in the background cannot relabel the account's next session.
-- **Shell prompts and MOTD.** `[ -n "$AI_AGENT" ] && PS1="(agent:$AI_AGENT) $PS1"` in `/etc/profile.d/`. Cheap and visible in session recordings.
-- **sudo.** `env_reset` strips it. Add `Defaults env_keep += "AI_AGENT AI_AGENT_SESSION AI_AGENT_OPERATOR"` so it survives into privileged commands.
-- **Session recorders.** tlog and `script` do not record the environment; capture it once at shell start, e.g. `/etc/profile.d/ai-agent-log.sh` running `logger -t ai_agent "user=$USER agent=${AI_AGENT:-none} session=${AI_AGENT_SESSION:-} operator=${AI_AGENT_OPERATOR:-}"`.
-
-## 4. How clients set it
-
-OpenSSH command line:
-
-```sh
-ssh -o SetEnv=AI_AGENT=claude-code@2.0.1 -o SetEnv=AI_AGENT_OPERATOR=alice host cmd
-```
-
-or in `~/.ssh/config`: `SetEnv AI_AGENT=claude-code`. (`SetEnv` exists since OpenSSH 7.8.)
-
-paramiko:
-
-```python
-stdin, stdout, stderr = client.exec_command(cmd, environment={"AI_AGENT": "my-mcp@0.3.0"})
-# or on a channel you manage yourself:
-chan = client.get_transport().open_session()
-chan.update_environment({"AI_AGENT": "my-mcp@0.3.0", "AI_AGENT_SESSION": sid})
-chan.exec_command(cmd)
-```
-
-asyncssh:
-
-```python
-result = await conn.run(cmd, env={"AI_AGENT": "my-mcp@0.3.0"})
-```
-
-node ssh2:
-
-```js
-conn.exec(cmd, { env: { AI_AGENT: "ssh-mcp@1.2.0", AI_AGENT_SESSION: sid } }, cb);
-```
-
-Go `golang.org/x/crypto/ssh`:
-
-```go
-sess, _ := client.NewSession()
-_ = sess.Setenv("AI_AGENT", "go-ssh-mcp@0.1.0") // silently ignored unless AcceptEnv matches
-out, err := sess.CombinedOutput(cmd)
-```
-
-Rust russh: `channel.set_env(false, "AI_AGENT", "value").await` (UNVERIFIED against the current russh API).
-
-All of these send the same protocol request (`env`, RFC 4254 §6.4), so nothing new is needed in any SSH implementation.
-
-## 5. Security considerations
-
-1. **A declaration is a statement, not proof.** It is exactly as trustworthy as the client. Log it, display it, correlate on it. Never use it for authorization decisions, and never treat its absence as evidence that a human is present.
-2. **Absence means nothing.** Most agents today send nothing. A missing `AI_AGENT` is the normal case, not a negative signal.
-3. **Spoofing in both directions.** A human can claim to be an agent (to deflect blame) and an agent can pass as human by staying silent. The server-imposed variants in §2.3 make the label depend on the credential, which is the property auditors actually want.
-4. **Injection.** Values reach shell environments and log lines. Enforce the grammar on the server or in the consumer. whotyped truncates and strips control characters before writing evidence.
-5. **Privacy.** `AI_AGENT_OPERATOR` names a person. Treat it as personal data under the same rules as the SSH username.
-6. **No secrets.** Never put API keys or tokens in these variables. They end up in `/proc/*/environ`, session recordings and SIEMs.
-
-## 6. Relation to other conventions
-
-- **Vercel detect-agent `AI_AGENT`.** Same variable, same value grammar. detect-agent reads it in the agent's own process environment; this spec carries the same value across an SSH hop so the remote side sees it too. A client that already runs inside an agent SHOULD forward the existing local `AI_AGENT` value unchanged.
-- **Goose `AGENT=goose`.** Block's Goose sets a generic `AGENT` variable plus `AGENT_SESSION_ID` (research doc 02). Clients MAY map `AGENT` to `AI_AGENT` when the former is set and the latter is not. Servers should accept `AGENT` only deliberately; it is a common word and collides with other software.
-- **Per-vendor variables** (`CLAUDECODE=1`, `CODEX_SANDBOX`, `GEMINI_CLI=1`, `CURSOR_AGENT=1`, `GOOSE_PROVIDER`, `COPILOT_MODEL`, …) identify the agent on the machine where it runs. They are not sent over SSH and are not a substitute for `AI_AGENT`. A client library can use them to fill in `AI_AGENT` automatically: if `CLAUDECODE` is set and `AI_AGENT` is not, send `AI_AGENT=claude-code`.
-
-## 7. MCP SSH servers: compatibility
-
-From `docs/research/02-agent-fingerprints.md`. "Could adopt" means the underlying library exposes the `env` request; none of these servers send it today (checked 2026-09-11; none documents a custom env).
-
-| Server | Library | Env request available | Could adopt | Notes |
-|---|---|---|---|---|
-| tufantunc/ssh-mcp | node ssh2 | `exec(cmd, {env})`, `shell({env})` | yes | banner `SSH-2.0-ssh2js…` |
-| bvisible/mcp-ssh-manager | node ssh2 | same | yes | wraps commands as `timeout N sh -c` |
-| VitalyMalakanov/mcp-ssh-toolkit-py | paramiko | `exec_command(environment=)` | yes | |
-| vignitin/multi-ssh-mcp | paramiko | same | yes | |
-| chouzz/remoteShell-mcp | paramiko | same | yes | |
-| RFingAdam/mcp-remote-access | paramiko | same | yes | |
-| Nightreaver/python-ssh-mcp | asyncssh | `env=` on `run`/`create_process` | yes | persistent shell: set once at open |
-| SKIPPINGpetticoatconvent/go-ssh-mcp | x/crypto/ssh | `Session.Setenv` | yes | |
-| Brainwires/mcp-secure-shell | russh or libssh2 (UNVERIFIED) | russh `set_env`; libssh2 `libssh2_channel_setenv` | probably | library not confirmed |
-
-The agent CLIs themselves (Claude Code, Codex, Gemini CLI, Cursor CLI, Goose, Copilot CLI) have no built-in SSH tool; they call the system `ssh`. That makes them declarable today, without any change from their vendors, because each already exports a marker into the shells it spawns: `CLAUDECODE`, `CURSOR_AGENT`, `GEMINI_CLI`, `CODEX_SANDBOX`, `GOOSE_PROVIDER`, `COPILOT_MODEL` (see `docs/research/02-agent-fingerprints.md`).
-
-`SetEnv` writes a literal value, so it cannot carry a variable the agent set. `SendEnv` forwards one from the client's own environment, which is exactly what is needed:
-
-```
-# ~/.ssh/config on the machine the agent runs on
+# ~/.ssh/config on the machine where the agent runs
 Host *
     SendEnv AI_AGENT AI_AGENT_* CLAUDECODE CURSOR_AGENT GEMINI_CLI CODEX_SANDBOX
 ```
@@ -179,37 +35,219 @@ Host *
 AcceptEnv AI_AGENT AI_AGENT_* CLAUDECODE CURSOR_AGENT GEMINI_CLI CODEX_SANDBOX
 ```
 
-A variable that is not set locally is simply not sent, so the same two lines cover every tool and stay quiet for a human's own sessions. `AI_AGENT` remains the preferred name because it carries the tool's identity rather than a vendor's internal flag; the vendor markers are the fallback that works before anyone adopts anything.
+A variable that is not set locally is not sent, so those lines stay silent for your own sessions and speak up for the agent's. `SendEnv` forwards a variable you already have; `SetEnv` writes a fixed value. For a declaration you want `SendEnv`.
 
-## 8. How to adopt in 10 lines (MCP server maintainers)
+**If you write a tool that opens SSH sessions**, send the variable yourself. One field on the call you already make:
 
-1. Pick your id: your server's name in lowercase-hyphen, plus version. Example `ssh-mcp@1.3.0`.
+```js
+conn.exec(cmd, { env: { AI_AGENT: 'ssh-mcp' } }, cb);   // node ssh2
+```
+
+```python
+client.exec_command(cmd, environment={"AI_AGENT": "my-mcp"})   # paramiko
+```
+
+**If you operate servers**, add the `AcceptEnv` line, then read the variable from the session environment. Section 4 lists the ways.
+
+---
+
+## 1. The variable
+
+```
+AI_AGENT=<name>
+```
+
+- **`<name>`**: lowercase ASCII letters, digits and hyphens, matching `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 64 characters.
+- Reuse the id an ecosystem already knows you by. Vercel's [detect-agent](https://github.com/vercel/detect-agent) `agents.json` is the de facto register: `claude-code`, `cursor-cli`, `codex-cli`, `gemini-cli`, `goose`, `github-copilot`.
+- A tool that opens sessions on an agent's behalf and cannot learn the agent's name SHOULD send its own. Something truthful beats nothing.
+
+### Versions: allowed, but not by default
+
+A version MAY be appended as `<name>@<version>`, at most 32 further characters, no spaces.
+
+Clients SHOULD NOT send a version to a host they do not control. As the first adopter put it: a name is an announcement, a version is a fingerprint. Tools of this kind exist to drive machines an agent was pointed at, and one of those machines being hostile is inside the threat model. Telling it the exact build is a gift.
+
+Send the version when the fleet is yours and you want it in your own audit trail. Otherwise send the name.
+
+### Optional companions
+
+```
+AI_AGENT_SESSION=<opaque id>      up to 128 printable ASCII characters, no spaces
+AI_AGENT_OPERATOR=<human handle>  up to 128 characters, e.g. a username or email
+```
+
+`AI_AGENT_SESSION` lets an operator join what the server saw to the agent's own transcript. `AI_AGENT_OPERATOR` names the accountable human when the login is a shared or service account. Neither is required.
+
+Clients MUST NOT put newlines, NUL bytes or shell metacharacters in any value. Servers and consumers SHOULD reject a value that breaks the grammar rather than sanitising it into something else.
+
+---
+
+## 2. The server side
+
+```
+# /etc/ssh/sshd_config.d/50-ai-agent.conf
+AcceptEnv AI_AGENT AI_AGENT_*
+```
+
+Without it, OpenSSH ignores the request. The default is to accept nothing, and the refusal is logged only at `LogLevel DEBUG2`. Accepting these names is safe: they mean nothing to the shell or to any program that does not look for them.
+
+### Making the declaration visible
+
+An accepted variable lands in the session's environment. sshd does not log it at any normal log level, and a one-command session ends before any periodic scan could read it. If you want a record of every declaration, log it as the session starts:
+
+```sh
+# /etc/ssh/sshrc  (full version, with the xauth block sshd(8) requires:
+#  https://github.com/mthamil107/whotyped/blob/main/deploy/sshd/sshrc)
+if [ -n "${AI_AGENT:-}" ] && command -v logger >/dev/null 2>&1; then
+	agent=$(printf '%s' "$AI_AGENT" | LC_ALL=C tr -cd 'A-Za-z0-9._@:+-' | cut -c1-64)
+	set -- ${SSH_CONNECTION:-}
+	[ -n "$agent" ] && [ -n "${1:-}" ] && logger -p authpriv.info -t ai-agent-declare -- \
+		"AI_AGENT=$agent user=${USER:-$(id -un)} from=$1 port=$2" 2>/dev/null || :
+fi
+```
+
+The tag is yours to choose; `ai-agent-declare` is the neutral one this document recommends. whotyped accepts it and also its own historical `whotyped-declare`.
+
+sshd runs `/etc/ssh/sshrc` for every session, as the user, after the client's environment is in place and before the session's command runs. Two cautions: sshd skips it for a user who has their own `~/.ssh/rc`, and once this file exists sshd stops running `xauth` itself, so keep the `xauth` block from `sshd(8)` in it.
+
+A line written this way is a claim any local user could also write with `logger`. A consumer MUST attach it only to an SSH connection that already exists for the same user, address and port, and SHOULD check journald's trusted `_UID` where available.
+
+### When the client should not be believed
+
+A client can claim anything. Two OpenSSH features let the server decide instead, both relying on environment precedence in `do_setup_env()`: client values first, then `authorized_keys` options, then `sshd_config` `SetEnv`, with later assignments winning.
+
+Per group of agent accounts:
+
+```
+Match Group agents
+    SetEnv AI_AGENT=unknown-agent
+```
+
+Per key, when an agent has its own key on a person's account:
+
+```
+# sshd_config
+PermitUserEnvironment AI_AGENT,AI_AGENT_*
+# ~/.ssh/authorized_keys
+environment="AI_AGENT=claude-code" ssh-ed25519 AAAA... alice-agent-laptop
+```
+
+Enable only those names, never `PermitUserEnvironment yes`: a user-writable `environment=` for `LD_PRELOAD` or `PATH` is a known hazard. With either variant, a client that sends a different value is overridden, and one that sends nothing is still labelled. This is the form auditors want, because the label then depends on the credential rather than on good manners.
+
+---
+
+## 3. Sending it, by library
+
+Every one of these produces the same `env` channel request from [RFC 4254 §6.4](https://www.rfc-editor.org/rfc/rfc4254#section-6.4). No SSH implementation needs changing.
+
+| Client | Call |
+|---|---|
+| OpenSSH, per command | `ssh -o SendEnv=AI_AGENT host cmd` |
+| OpenSSH, config | `SendEnv AI_AGENT` under a `Host` block |
+| node ssh2 | `conn.exec(cmd, { env: { AI_AGENT: 'name' } }, cb)` |
+| paramiko | `client.exec_command(cmd, environment={"AI_AGENT": "name"})` |
+| paramiko, own channel | `chan.update_environment({"AI_AGENT": "name"})` |
+| asyncssh | `await conn.run(cmd, env={"AI_AGENT": "name"})` |
+| Go `x/crypto/ssh` | `session.Setenv("AI_AGENT", "name")` |
+| russh | `channel.set_env(false, "AI_AGENT", "name").await` (unverified against current API) |
+
+An unaccepted request cannot fail the command. ssh2, for example, sends it without asking for a reply, so the server has nothing to answer and nothing to refuse. This was measured by the first adopter against a server with no `AcceptEnv` line at all, and independently in whotyped's test lab against OpenSSH and Dropbear: the command runs, the variable is simply absent.
+
+---
+
+## 4. Reading it, as an operator
+
+- **Any process in the session.** It is in the environment of the session shell and everything it spawns; `/proc/<pid>/environ` shows it, with the same uid or `CAP_SYS_PTRACE`. It is *not* visible to PAM session hooks, because those run before the environment request is processed.
+- **The sshrc hook above**, which gives you a log line per session, including one-command sessions.
+- **Shell prompt or message of the day.** `[ -n "$AI_AGENT" ] && PS1="(agent:$AI_AGENT) $PS1"` makes it visible in session recordings.
+- **sudo.** `env_reset` strips it; add `Defaults env_keep += "AI_AGENT AI_AGENT_SESSION AI_AGENT_OPERATOR"` to keep it across privileged commands.
+- **whotyped**, the reference consumer, which reads both routes and labels the session `declared_agent`.
+
+---
+
+## 5. Security considerations
+
+1. **A declaration is a statement, not proof.** It is exactly as trustworthy as the client. Log it, show it, correlate on it. Never use it for an authorization decision.
+2. **Absence means nothing.** Most agents send nothing today. A missing variable is the normal case, not a negative signal. It becomes informative only when declaring is common, which is the point of the convention.
+3. **Spoofing runs both ways.** A person can claim to be an agent to deflect blame; an agent passes as human by staying silent. The server-imposed variants in section 2 remove both, because the label then follows the credential.
+4. **Injection.** Values reach shell environments and log lines. Enforce the grammar at the consumer, truncate, and strip control characters before writing evidence anywhere.
+5. **Fingerprinting.** See the version guidance in section 1. The variable should say what is connecting, never which build, to a host you do not trust.
+6. **Privacy.** `AI_AGENT_OPERATOR` names a person and is personal data, on the same footing as the SSH username.
+7. **No secrets, ever.** These values end up in `/proc`, in session recordings and in SIEMs.
+
+---
+
+## 6. Relation to other conventions
+
+- **Vercel detect-agent `AI_AGENT`.** Same variable, same grammar. detect-agent reads it inside the agent's own process; this document carries the same value across an SSH hop. A client that already runs inside an agent SHOULD forward the existing value unchanged rather than inventing one.
+- **`AGENT=`.** Block's Goose and some other tools set a generic `AGENT` variable. There is an open debate about which name wins. This convention uses `AI_AGENT` because `AGENT` is a common word that collides with unrelated software, but a client MAY map `AGENT` to `AI_AGENT` when the former is set and the latter is not, and a consumer MAY accept both. If the ecosystem settles on `AGENT`, this document will follow rather than fork.
+- **Per-vendor markers** (`CLAUDECODE`, `CODEX_SANDBOX`, `GEMINI_CLI`, `CURSOR_AGENT`, `GOOSE_PROVIDER`, `COPILOT_MODEL`). These identify the tool on the machine where it runs. They are not a substitute for `AI_AGENT`, but they are the bridge that works before anyone adopts anything: forward them with `SendEnv` as in the quick start, or use them to fill in `AI_AGENT` automatically when your client builds the request.
+
+---
+
+## 7. Who has adopted it
+
+| Project | Status | Notes |
+|---|---|---|
+| [whotyped](https://github.com/mthamil107/whotyped) | reads it | Reference consumer: labels declared sessions, and scores the ones that stay silent |
+| [tufantunc/ssh-mcp](https://github.com/tufantunc/ssh-mcp) | sends it, pending merge | [#222](https://github.com/tufantunc/ssh-mcp/issues/222) agreed, [#227](https://github.com/tufantunc/ssh-mcp/pull/227) open. Name only, no version |
+
+Tools whose libraries expose the request and could adopt it cheaply, checked 2026-09-22:
+
+| Project | Library | Activity |
+|---|---|---|
+| bvisible/mcp-ssh-manager | node ssh2 | active |
+| Nightreaver/python-ssh-mcp | asyncssh | persistent shell, set once at open |
+| chouzz/remoteShell-mcp | paramiko | small |
+| RFingAdam/mcp-remote-access | paramiko | small |
+| vignitin/multi-ssh-mcp | paramiko | small |
+
+Two projects listed in the earlier draft are gone: the Go server that was here has been deleted from GitHub, and `VitalyMalakanov/mcp-ssh-toolkit-py` has not been touched since April 2025.
+
+Send a pull request or open an issue to be added or corrected.
+
+---
+
+## 8. Adopting it, for tool maintainers
+
+1. Pick your id: your tool's name, lowercase-hyphen.
 2. If the process environment already has `AI_AGENT`, forward that value instead of your own.
-3. Add the variable to every session you open (see §4 for your library's call).
-4. If you know a session id, send `AI_AGENT_SESSION`. If you know the human, send `AI_AGENT_OPERATOR`.
-5. Do nothing if the server ignores it. There is no error path.
-6. Document one line for operators: `AcceptEnv AI_AGENT AI_AGENT_*`.
-7. Add a config switch to turn it off; default on.
-8. Do not put secrets in the value.
-9. Add a test that asserts the env request is sent (paramiko: mock `update_environment`; ssh2: assert `env` in exec options).
-10. Tell us (issue in this repo) so the compatibility table gets updated.
+3. Add the field to every session you open. One line, see section 3.
+4. Send the name only, unless your users are driving hosts they own.
+5. Send `AI_AGENT_SESSION` if you have a session id worth correlating.
+6. Do nothing about failures. There is no error path; an unaccepted name is ignored.
+7. Add a test that fails if the field is removed. Asserting the options object reaching your SSH library is enough.
+8. Document one line for your users: `AcceptEnv AI_AGENT AI_AGENT_*` on the server.
+9. Never put a secret in the value.
+10. Tell us, so the table above stays true.
 
-## Appendix A: PR text for maintainers
+### Questions adopters have asked
 
-Title: `Declare AI agent sessions to the SSH server via AI_AGENT env`
+**Does this break connections to servers that have not configured it?** No. OpenSSH ignores an environment request it has not been told to accept, and the request does not ask for a reply, so there is nothing that can fail. Measured against OpenSSH without `AcceptEnv`, and against Dropbear, which has no `AcceptEnv` mechanism at all: the command runs and the variable is absent.
 
-Body:
+**What about Dropbear, or Windows OpenSSH?** Dropbear is measured, as above. Windows OpenSSH ships no `AcceptEnv` line by default, so the expected behaviour is the same, but it has not been measured. If you can test it, please report.
 
-> This change makes every SSH session opened by this server request the environment variable `AI_AGENT=<name>@<version>` (and `AI_AGENT_SESSION` where a session id is known). It follows the draft "AI_AGENT over SSH" convention: https://github.com/mthamil107/whotyped/blob/main/docs/spec/ai-agent-over-ssh.md
+**Should it be configurable?** Only if your users would plausibly want it off. The value carries your tool's name and nothing about the user, the session or the command, so most projects will not need a switch.
+
+**What does the server gain if nobody reads the variable?** A log line and a shell environment that say which tool connected. Any hook, audit rule or monitoring tool can read it. whotyped is one consumer, not a requirement.
+
+---
+
+## Appendix: pull request text
+
+> **Declare agent sessions to the SSH server with `AI_AGENT`**
 >
-> Why: operators of Linux servers increasingly need to tell agent-driven sessions from human ones for audit reasons (PCI DSS 8.2.2, ISO 27001 A.8.16). Today an MCP SSH server looks like an anonymous library client. Declaring the agent is cheap and honest.
+> This makes every SSH session this tool opens send the environment variable `AI_AGENT=<name>`, following the "AI_AGENT over SSH" convention: https://github.com/mthamil107/whotyped/blob/main/docs/spec/ai-agent-over-ssh.md
 >
-> What it does: one extra `env` channel request per session, using the library's existing API. If the server has not configured `AcceptEnv AI_AGENT AI_AGENT_*`, OpenSSH ignores it silently. There is no behaviour change for users. The value uses the same grammar as Vercel's detect-agent `AI_AGENT` variable and forwards a pre-existing `AI_AGENT` from the process environment when present.
+> **Why.** Operators increasingly need to tell agent-driven sessions from human ones, for audit reasons such as PCI DSS 8.2.2 and ISO 27001 A.8.16. Today a tool like this one looks like an anonymous library client on the server. Declaring is cheap and honest, and it means our sessions stop looking suspicious to anyone watching.
 >
-> Config: `declare_agent: true` (default). Set to `false` to disable.
+> **What it does.** One extra field on the exec call, using the library's existing API. If the server has not set `AcceptEnv AI_AGENT`, OpenSSH ignores it silently and nothing changes for users. The name only, no version, so a host that may be hostile is not told which build is talking to it.
 >
-> Tests: added a unit test asserting the env request is sent.
+> **Tests.** A test that fails if the field is removed.
 
-## Appendix B: Changes
+---
 
-- v0.1 (2026-09-11): first draft.
+## Changes
+
+- **v0.2 (2026-09-22).** Quick start leading with `SendEnv`, which declares today's agent CLIs without vendor cooperation; corrected the earlier claim that OpenSSH cannot forward a local variable. Version discouraged toward untrusted hosts, after the first adopter's objection. Adopter questions and adopter table added. Compatibility table corrected: one project deleted upstream, one dead.
+- **v0.1 (2026-09-11).** First draft.
