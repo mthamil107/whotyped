@@ -19,6 +19,7 @@ type expectation struct {
 	Class    Class  `json:"class"`
 	Level    Level  `json:"level"`
 	Mode     string `json:"mode"`
+	Agent    string `json:"agent"`
 	Notes    string `json:"notes"`
 }
 
@@ -122,6 +123,9 @@ func runScenario(t *testing.T, dir string) {
 	}
 	if want.Mode != "" && v.Mode != want.Mode {
 		t.Errorf("mode %s want %s", v.Mode, want.Mode)
+	}
+	if want.Agent != "" && v.Agent != want.Agent {
+		t.Errorf("agent %q want %q", v.Agent, want.Agent)
 	}
 	// Privacy: no reason may quote a whole multi-word command from the dataset.
 	for _, ev := range events {

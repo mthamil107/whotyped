@@ -1,0 +1,9 @@
+{
+  "score_min": 80,
+  "score_max": 100,
+  "class": "declared_agent",
+  "level": "high",
+  "mode": "remote_agent",
+  "agent": "ssh-mcp",
+  "notes": "A real adopter's shape: tufantunc/ssh-mcp (node ssh2) opening one exec channel per command, no PTY, declaring AI_AGENT=ssh-mcp through the sshrc hook's neutral ai-agent-declare tag. The point of this scenario is the agent name: ssh-mcp has no entry in rules/agents.yaml, so it exercises the fallback in clues.agentForDeclared where an unrecognised declared name passes through as itself. That is the path every new adopter takes, and before this scenario existed every declaration in the dataset used claude-code, the one name that does have a rules entry."
+}
