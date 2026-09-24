@@ -24,9 +24,11 @@ Exit: a user running any of those CLIs can make their sessions self-declare by e
 **N2. Land the first adopter. Done 2026-09-22.**
 `tufantunc/ssh-mcp#227` merged. The maintainer reviewed by pushing a second commit rather than sending a list, and that review was the most useful the project has had: it found a third channel the patch missed (`openShell`, the workflow that project's own README documents), a call site whose test could be deleted with the whole 1007-test suite still green, and a Dropbear assertion that could not fail. It also produced a correction to the spec — `AcceptEnv` governs what a server stores, not what a client sends, so the declaration reaches every host whether or not it opted in. Spec v0.3 carries all of it.
 
-Next: offer the same change to `bvisible/mcp-ssh-manager` (ssh2, ~480 stars, active) and at most two smaller ones, with the corrected text — a switch defaulting to on, and one test per channel. The Go server named in earlier research no longer exists and one Python server has been dead since April 2025; the nine-server campaign was never real.
+**Second adopter, 2026-09-24.** `bvisible/mcp-ssh-manager#84` landed in v4.0.0-beta.1. The commit went in unmodified under the author's name, with one commit on top adapting it to that project's V4. Three changes came back, and two of them are now in the spec: the tool's desktop control plane opens connections for a *person*, so ported as written it would have labelled every human click as an agent — answered with an actor argument and a test that fails if a call site appears without one. And it ships default **off**, under a promise that upgrading changes nothing reaching a user's servers. Spec v0.4 carries both, plus the subprocess trap its rsync path exposed.
 
-Exit: met. One merged adopter, listed in the spec's compatibility table.
+Next: at most two smaller servers, with the v0.4 text. The Go server named in earlier research no longer exists and one Python server has been dead since April 2025; the nine-server campaign was never real.
+
+Exit: met twice. Two adopters, both listed in the spec's compatibility table.
 
 **N3. False-alarm baseline, running in the background.**
 Not a gate on N1 or N2. It needs other people's hosts, which do not exist yet, so it starts when the first one is offered.

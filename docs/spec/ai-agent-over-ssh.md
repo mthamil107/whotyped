@@ -2,7 +2,7 @@
 
 **A one-variable convention that lets an SSH session say it is driven by an AI agent.**
 
-Version 0.3 draft, 2026-09-22. Maintained in the [whotyped](https://github.com/mthamil107/whotyped) repository. Comments and corrections as issues, please. Free to implement, no permission needed, no attribution required.
+Version 0.4 draft, 2026-09-24. Maintained in the [whotyped](https://github.com/mthamil107/whotyped) repository. Comments and corrections as issues, please. Free to implement, no permission needed, no attribution required.
 
 "MUST", "SHOULD" and "MAY" carry their [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) meanings.
 
@@ -60,6 +60,7 @@ AI_AGENT=<name>
 - **`<name>`**: lowercase ASCII letters, digits and hyphens, matching `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 64 characters.
 - Reuse the id an ecosystem already knows you by. Vercel's [detect-agent](https://github.com/vercel/detect-agent) `agents.json` is the de facto register: `claude-code`, `cursor-cli`, `codex-cli`, `gemini-cli`, `goose`, `github-copilot`.
 - A tool that opens sessions on an agent's behalf and cannot learn the agent's name SHOULD send its own. Something truthful beats nothing.
+- A client that opens sessions for both an agent and a person MUST NOT send `AI_AGENT` on a session a person initiated — a shell, a file browser, a health probe, a command clicked in a desktop app. The actor is whoever chose to open the session and what to run in it: a person's prompt to an agent makes the agent the actor, a person's click does not. A false declaration is worse than none, because it teaches every consumer that the label lies. The second adopter hit this within a day of adopting, and answered it by making the actor an argument to the function that opens a connection.
 
 ### Versions: allowed, but not by default
 
@@ -144,6 +145,7 @@ Every one of these produces the same `env` channel request from [RFC 4254 §6.4]
 |---|---|
 | OpenSSH, per command | `ssh -o SendEnv=AI_AGENT host cmd` |
 | OpenSSH, config | `SendEnv AI_AGENT` under a `Host` block |
+| OpenSSH, spawned with your own name | `AI_AGENT=<name> ssh -o SendEnv=AI_AGENT host cmd` |
 | node ssh2 | `conn.exec(cmd, { env: { AI_AGENT: 'name' } }, cb)` |
 | paramiko | `client.exec_command(cmd, environment={"AI_AGENT": "name"})` |
 | paramiko, own channel | `chan.update_environment({"AI_AGENT": "name"})` |
@@ -152,6 +154,10 @@ Every one of these produces the same `env` channel request from [RFC 4254 §6.4]
 | russh | `channel.set_env(false, "AI_AGENT", "name").await` (unverified against current API) |
 
 An unaccepted request cannot fail the command. ssh2, for example, sends it without asking for a reply, so the server has nothing to answer and nothing to refuse. This was measured by the first adopter against a server with no `AcceptEnv` line at all, and independently in whotyped's test lab against OpenSSH and Dropbear: the command runs, the variable is simply absent.
+
+**If you spawn `ssh`, `scp` or `rsync -e ssh`** rather than calling a library, set `AI_AGENT` in the child's environment *and* pass `-o SendEnv=AI_AGENT`. `SendEnv` forwards only a variable that is actually set, so with it unset the option is silently a no-op: the command succeeds, nothing is declared, and a test that asserts the flag is on the command line stays green with the feature dead. Assert on the child's environment, or on `ssh -v` printing `debug1: channel 0: setting env AI_AGENT = "<name>"`, never on the flag alone.
+
+`-o SetEnv=AI_AGENT=<name>` needs no local variable and is the better shape, but it is OpenSSH 7.8+ and older clients reject it as a fatal configuration error — turning a missing label into a broken command. `SendEnv` has worked since 3.9. The second adopter chose `SendEnv` for its rsync path for exactly this reason.
 
 **`AcceptEnv` is not a gate on sending.** It is the server's policy about what it *passes into the session*, so it decides whether the value reaches the session environment — not whether the request reaches the host. Whenever the client is configured to send it — an ssh2 `env` option, or an OpenSSH `SendEnv` pattern matching a variable that is set locally — the request goes out regardless of what the server has configured, and a host that never opted in still receives it. Measured by the first adopter against Dropbear, which has no `AcceptEnv` mechanism at all:
 
@@ -178,10 +184,10 @@ So declaring is inert with respect to *breakage* and not with respect to *disclo
 
 1. **A declaration is a statement, not proof.** It is exactly as trustworthy as the client. Log it, show it, correlate on it. Never use it for an authorization decision.
 2. **Absence means nothing.** Most agents send nothing today. A missing variable is the normal case, not a negative signal. It becomes informative only when declaring is common, which is the point of the convention.
-3. **Spoofing runs both ways.** A person can claim to be an agent to deflect blame; an agent passes as human by staying silent. The server-imposed variants in section 2 remove both, because the label then follows the credential.
+3. **Spoofing runs both ways.** A person can claim to be an agent to deflect blame; an agent passes as human by staying silent; and a tool that labels a person's click as an agent spoofs on that person's behalf without either of them choosing to. The server-imposed variants in section 2 remove both, because the label then follows the credential.
 4. **Injection.** Values reach shell environments and log lines. Enforce the grammar at the consumer, truncate, and strip control characters before writing evidence anywhere.
 5. **Fingerprinting.** See the version guidance in section 1. The variable should say what is connecting, never which build, to a host you do not trust.
-6. **Declaring is a disclosure, and `AcceptEnv` does not withhold it.** The request reaches every host the client is configured to send to, whether or not that host asked to keep the value (section 3). For a client whose command output returns to a model, telling an untrusted host that an agent is driving tells it that output-tailored prompt injection is worth attempting. Give users a switch, default on, and let them turn it off for hosts they do not control.
+6. **Declaring is a disclosure, and `AcceptEnv` does not withhold it.** The request reaches every host the client is configured to send to, whether or not that host asked to keep the value (section 3). For a client whose command output returns to a model, telling an untrusted host that an agent is driving tells it that output-tailored prompt injection is worth attempting. Give users a switch and let them turn it off for hosts they do not control. Default it on, unless you have promised that an upgrade changes nothing reaching their servers — see section 8 item 7.
 7. **Privacy.** `AI_AGENT_OPERATOR` names a person and is personal data, on the same footing as the SSH username.
 8. **No secrets, ever.** These values end up in `/proc`, in session recordings and in SIEMs.
 
@@ -202,13 +208,13 @@ So declaring is inert with respect to *breakage* and not with respect to *disclo
 | Project | Status | Notes |
 |---|---|---|
 | [whotyped](https://github.com/mthamil107/whotyped) | reads it | Reference consumer: labels declared sessions, and scores the ones that stay silent |
-| [tufantunc/ssh-mcp](https://github.com/tufantunc/ssh-mcp) | sends it | Merged [#227](https://github.com/tufantunc/ssh-mcp/pull/227) on 2026-09-22. Name only, no version; `announceAgent` switch, default on. Declares on all three channel types |
+| [tufantunc/ssh-mcp](https://github.com/tufantunc/ssh-mcp) | sends it | Merged [#227](https://github.com/tufantunc/ssh-mcp/pull/227), released v2.11.0 on 2026-09-22. Name only, no version; `announceAgent` switch, default on. Declares on all three channel types |
+| [bvisible/mcp-ssh-manager](https://github.com/bvisible/mcp-ssh-manager) | sends it | Landed in v4.0.0-beta.1 on 2026-09-24 ([#84](https://github.com/bvisible/mcp-ssh-manager/pull/84)). Default **off** under a compatibility promise, global switch plus a three-state per-host override; `actor: 'human'` on control-plane connections so a person's click is never labelled; rsync path declares through `SendEnv` |
 
-Tools whose libraries expose the request and could adopt it cheaply, checked 2026-09-22:
+Tools whose libraries expose the request and could adopt it cheaply, checked 2026-09-24:
 
 | Project | Library | Activity |
 |---|---|---|
-| bvisible/mcp-ssh-manager | node ssh2 | active |
 | Nightreaver/python-ssh-mcp | asyncssh | persistent shell, set once at open |
 | chouzz/remoteShell-mcp | paramiko | small |
 | RFingAdam/mcp-remote-access | paramiko | small |
@@ -224,12 +230,12 @@ Send a pull request or open an issue to be added or corrected.
 
 1. Pick your id: your tool's name, lowercase-hyphen.
 2. If the process environment already has `AI_AGENT`, forward that value instead of your own.
-3. Add the field at every place your code opens a channel — exec, shell and interactive are commonly three separate call sites. One line per call site, see section 3 and item 8.
+3. Add the field at every place your code opens a channel — exec, shell and interactive are commonly three separate call sites — and at any path that shells out to `ssh`, `scp` or `rsync -e ssh`, which is not a channel in your library and will not be found by grepping for one. One line per call site, see section 3 and item 8.
 4. Send the name only, unless your users are driving hosts they own.
 5. Send `AI_AGENT_SESSION` if you have a session id worth correlating.
 6. Do nothing about failures. There is no error path; an unaccepted name is ignored.
-7. Offer a switch, default on. The announcement is the feature, so it should not be off by default — but a user connecting to a host they do not control has a reason to withhold it, and `AcceptEnv` will not withhold it for them. See section 3.
-8. Add a test that fails if the field is removed, **for every channel your code opens**. Count them first: a project that opens a channel for `exec`, for a login shell and for an interactive session has three, and a suite that drives only the first will stay green with the feature deleted from the other two. Assert per call site, not per feature.
+7. Offer a switch, and default it on: the announcement is the feature, and a user connecting to a host they do not control has a reason to withhold it that `AcceptEnv` will not honour for them (section 3). If your tool keeps a host inventory, make the per-host setting three-state — unset, on, off — so one untrusted host can stay silent under a global on, and an explicit choice survives a config round trip. Ship it off by default only if you have promised users that an upgrade changes nothing reaching their servers; then say in the release notes how to turn it on, and turn it on at the next release that makes no such promise.
+8. Add a test that fails if the field is removed, **for every channel your code opens**. Count them first: a project that opens a channel for `exec`, for a login shell and for an interactive session has three, and a suite that drives only the first will stay green with the feature deleted from the other two. Assert per call site, not per feature. Count actors as well as channels: if any code path opens a session for a person rather than an agent, make the actor an argument and add a test that fails when a new call site appears without one.
 9. Document one line for your users: `AcceptEnv AI_AGENT AI_AGENT_*` on the server.
 10. Never put a secret in the value.
 11. Tell us, so the table above stays true.
@@ -243,6 +249,8 @@ Send a pull request or open an issue to be added or corrected.
 **What about Dropbear, or Windows OpenSSH?** Both are measured. Dropbear: as above. Windows OpenSSH, measured by the first adopter on Windows 11 ARM against a macOS client — with no `AcceptEnv` line all sessions exit 0 and the variable is absent, with `AcceptEnv AI_AGENT` the value arrives on both the exec and pty paths while an unlisted name still does not. `AcceptEnv` is selective there rather than a blanket accept.
 
 **Should it be configurable?** Yes, defaulting to on. The earlier advice here was that most projects would not need a switch, on the grounds that the value names only the tool. The first adopter overruled it with a better argument: a client that feeds command output back into a model has a threat model in which a hostile host tailors output to inject that model, so telling every host that an agent is driving is a disclosure the user may reasonably want to withhold — and `AcceptEnv` does not withhold it. Ship the switch on by default, so honest hosts still get the declaration.
+
+The second adopter then shipped it *off*, for a reason the first did not have: that release promised anyone upgrading that nothing reaching their servers would change on its own. That is a real constraint and the spec does not overrule it — but it is a property of a migration, not of the convention, so it belongs to that release and not to the next one. If your project has made no such promise, default it on; a convention every adopter disables produces no data and dies quietly.
 
 **What does the server gain if nobody reads the variable?** A log line and a shell environment that say which tool connected. Any hook, audit rule or monitoring tool can read it. whotyped is one consumer, not a requirement.
 
@@ -258,7 +266,7 @@ Send a pull request or open an issue to be added or corrected.
 >
 > **What it does.** One extra field on every channel this tool opens, using the library's existing API. If the server has not set `AcceptEnv AI_AGENT`, OpenSSH discards the value and nothing breaks — the request is sent without asking for a reply, so there is no error path. Note that unless the switch is off it is still *sent* to every host; `AcceptEnv` governs what the server keeps, not what the client transmits. The name only, no version, so a host that may be hostile is not told which build is talking to it.
 >
-> **Configurable.** On by default, with a switch for users driving hosts they do not control.
+> **Configurable.** A switch for users driving hosts they do not control, on by default — or off, if this release promises that an upgrade changes nothing reaching a user's servers.
 >
 > **Tests.** One test per channel the code opens, each failing if that call site loses the field.
 
@@ -266,6 +274,7 @@ Send a pull request or open an issue to be added or corrected.
 
 ## Changes
 
+- **v0.4 (2026-09-24).** After a second adopter, `bvisible/mcp-ssh-manager`. A client serving both an agent and a person MUST NOT declare a person's session: that adopter's desktop control plane would have labelled every human click as an agent, which is worse than silence because it teaches consumers the label lies. The default-on recommendation gains one exception, for a release that has promised upgraders nothing reaching their servers changes, and asks for a three-state per-host override so a global switch is not all-or-nothing. Section 3 gains the subprocess case: `SendEnv` forwards only a variable that is set, so a tool spawning `ssh` with its own name must set it in the child environment or declare nothing at all while its tests stay green. Adopter checklist now counts subprocess paths and actors, not only library channels.
 - **v0.3 (2026-09-22).** Corrected after the first adopter merged and reviewed. `AcceptEnv` governs what a server passes into the session, not what a client sends, so declaring is inert with respect to breakage and not with respect to disclosure; the earlier text conflated the two, and section 5 now carries the consequence. A switch, default on, is recommended rather than discouraged. Windows OpenSSH measured. Adopters told to count their channel-opening call sites and test each one, after a patch that covered two of three. Section 6 withdraws the earlier claim that `AGENT` collides with unrelated software: no concrete collision could be found, and the real difference between the two names is that their values are read incompatibly today.
 - **v0.2 (2026-09-22).** Quick start leading with `SendEnv`, which declares today's agent CLIs without vendor cooperation; corrected the earlier claim that OpenSSH cannot forward a local variable. Version discouraged toward untrusted hosts, after the first adopter's objection. Adopter questions and adopter table added. Compatibility table corrected: one project deleted upstream, one dead.
 - **v0.1 (2026-09-11).** First draft.
