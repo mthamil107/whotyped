@@ -42,7 +42,7 @@ Minimum honest design, because a weak version of this number is worse than none:
 Exit: that number published, and `rhythm.think_time` confirmed, retuned or dropped.
 
 **N4. Distribution and hygiene.**
-Two release assets have been downloaded, both by the author. Being installable is not the same as being reachable: add `go install` instructions, record the demo the README still promises, and decide whether an apt or COPR repository is worth the maintenance. Review Dependabot PR #1. Finish the trademark check at TMview and WIPO. Update the FAQ's Teleport comparison for their July 2026 agent controls. Advertise the rule-pack reviewer role from GOVERNANCE in the adopter conversations, since a second maintainer is most likely to come from there.
+Two release assets have been downloaded, both by the author. Being installable is not the same as being reachable: add `go install` instructions, record the demo the README still promises, and decide whether an apt or COPR repository is worth the maintenance. Review Dependabot PR #1. Trademark check done 2026-09-24: TMview "contains whotyped" returned no rows, and WIPO returned nothing under Trademarks, Patents or the Global Brand Database. That clears registered marks only — it says nothing about unregistered common-law use, so it is a reason not to worry rather than a right to the name. Update the FAQ's Teleport comparison for their July 2026 agent controls. Advertise the rule-pack reviewer role from GOVERNANCE in the adopter conversations, since a second maintainer is most likely to come from there.
 
 ## Next, on request rather than on schedule
 
